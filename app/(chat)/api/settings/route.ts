@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { auth } from "@/app/(auth)/auth";
 import { getAllowedModelIds } from "@/lib/ai/models";
-import { getUserSettings, updateUserSettings } from "@/lib/db/queries";
+import {
+  createUserSettings,
+  getUserSettings,
+  updateUserSettings,
+} from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
 
 const updateSettingsSchema = z.object({
@@ -18,7 +22,13 @@ export async function GET() {
   }
 
   try {
-    const userSettings = await getUserSettings({ userId: session.user.id });
+    let userSettings = await getUserSettings({ userId: session.user.id });
+
+    if (!userSettings) {
+      await createUserSettings({ userId: session.user.id });
+      userSettings = await getUserSettings({ userId: session.user.id });
+    }
+
     return Response.json(userSettings);
   } catch (error) {
     if (error instanceof ChatbotError) {

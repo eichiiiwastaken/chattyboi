@@ -225,11 +225,7 @@ function PureMultimodalInput({
   const [slashIndex, setSlashIndex] = useState(0);
 
   const submitForm = useCallback(() => {
-    window.history.pushState(
-      {},
-      "",
-      `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
-    );
+    router.push(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`);
 
     if (!webSearchEnabled) {
       setSearchSources(null);
@@ -272,6 +268,7 @@ function PureMultimodalInput({
     setLocalStorageInput,
     width,
     chatId,
+    router,
     webSearchEnabled,
     setSearchSources,
   ]);

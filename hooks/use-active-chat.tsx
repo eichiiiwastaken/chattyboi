@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   type Dispatch,
@@ -68,6 +68,7 @@ function extractChatId(pathname: string): string | null {
 
 export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { setDataStream } = useDataStream();
   const { mutate } = useSWRConfig();
 
@@ -263,9 +264,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         setWebSearchEnabled(true);
       }
 
-      window.history.replaceState(
-        {},
-        "",
+      router.replace(
         `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
       );
 
@@ -281,7 +280,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
       send();
     }
-  }, [sendMessage, chatId]);
+  }, [sendMessage, chatId, router]);
 
   useAutoResume({
     autoResume: !isNewChat && !!chatData,

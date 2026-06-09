@@ -17,7 +17,8 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
+import { unstable_serialize } from "swr/infinite";
 import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   ModelSelector,
@@ -54,6 +55,7 @@ import {
   T3SendIcon,
 } from "./icons";
 import { PreviewAttachment } from "./preview-attachment";
+import { getChatHistoryPaginationKey } from "./sidebar-history";
 import {
   type SlashCommand,
   SlashCommandMenu,
@@ -107,6 +109,7 @@ function PureMultimodalInput({
   isLoading?: boolean;
 }) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const { setTheme, resolvedTheme } = useTheme();
   const { webSearchEnabled, setWebSearchEnabled, setSearchSources } =
     useActiveChat();
@@ -190,11 +193,18 @@ function PureMultimodalInput({
         toast("Delete this chat?", {
           action: {
             label: "Delete",
-            onClick: () => {
-              fetch(
+            onClick: async () => {
+              const response = await fetch(
                 `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat?id=${chatId}`,
                 { method: "DELETE" }
               );
+
+              if (!response.ok) {
+                toast.error("Failed to delete chat");
+                return;
+              }
+
+              await mutate(unstable_serialize(getChatHistoryPaginationKey));
               router.push("/");
               toast.success("Chat deleted");
             },

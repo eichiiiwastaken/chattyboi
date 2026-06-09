@@ -39,6 +39,18 @@ describe("sanitizeText", () => {
     expect(sanitizeText("text<has_function_call>more")).toBe("textmore");
   });
 
+  it("removes leaked DSML tool call blocks", () => {
+    expect(
+      sanitizeText(
+        'before <| DSML | tool_calls><| DSML | invoke name="webSearch"><| DSML | parameter name="query" string="true">modern philosophers meaning of life today</| DSML | parameter></| DSML | invoke></| DSML | tool_calls> after'
+      )
+    ).toBe("before  after");
+  });
+
+  it("removes orphan DSML tags", () => {
+    expect(sanitizeText("text<| DSML | tool_calls>more")).toBe("textmore");
+  });
+
   it("removes <think> blocks with content", () => {
     expect(sanitizeText("before<think>hidden</think>after")).toBe(
       "beforeafter"

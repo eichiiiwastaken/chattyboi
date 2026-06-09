@@ -128,31 +128,45 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     ? paginatedChatHistories.every((page) => page.chats.length === 0)
     : false;
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     const chatToDelete = deleteId;
+
+    if (!chatToDelete) {
+      return;
+    }
+
     const isCurrentChat = pathname === `/chat/${chatToDelete}`;
 
     setShowDeleteDialog(false);
+    setDeleteId(null);
 
     if (isCurrentChat) {
       router.replace("/");
     }
 
-    mutate((chatHistories) => {
-      if (chatHistories) {
-        return chatHistories.map((chatHistory) => ({
-          ...chatHistory,
-          chats: chatHistory.chats.filter((chat) => chat.id !== chatToDelete),
-        }));
+    const optimisticHistory = paginatedChatHistories?.map((chatHistory) => ({
+      ...chatHistory,
+      chats: chatHistory.chats.filter((chat) => chat.id !== chatToDelete),
+    }));
+
+    try {
+      await mutate(optimisticHistory, { revalidate: false });
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat?id=${chatToDelete}`,
+        { method: "DELETE" }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete chat");
       }
-    });
 
-    fetch(
-      `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat?id=${chatToDelete}`,
-      { method: "DELETE" }
-    );
-
-    toast.success("Chat deleted");
+      await mutate();
+      toast.success("Chat deleted");
+    } catch (_error) {
+      await mutate();
+      toast.error("Failed to delete chat");
+    }
   };
 
   const handlePin = (chatId: string, pinnedAt: Date | null) => {

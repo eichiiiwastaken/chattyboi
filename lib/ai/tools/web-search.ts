@@ -7,6 +7,29 @@ type TavilyResult = {
   content?: string;
 };
 
+async function readSearchError(response: Response) {
+  const fallback = `Search request failed (${response.status})`;
+
+  try {
+    const data = await response.json();
+    let detail: string | null = null;
+
+    if (typeof data === "object" && data !== null) {
+      if ("detail" in data && typeof data.detail === "string") {
+        detail = data.detail;
+      } else if ("error" in data && typeof data.error === "string") {
+        detail = data.error;
+      } else if ("message" in data && typeof data.message === "string") {
+        detail = data.message;
+      }
+    }
+
+    return detail ? `${fallback}: ${detail}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function searchWeb(query: string) {
   const normalizedQuery = query.trim();
 
@@ -39,9 +62,15 @@ export async function searchWeb(query: string) {
   });
 
   if (!response.ok) {
+    const error = await readSearchError(response);
+    console.error("Web search request failed", {
+      status: response.status,
+      error,
+    });
+
     return {
       query: normalizedQuery,
-      error: "Search request failed",
+      error,
       status: response.status,
       results: [],
     };

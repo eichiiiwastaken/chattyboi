@@ -66,6 +66,8 @@ export function getDocumentTimestampByIndex(
 
 export function sanitizeText(text: string) {
   return text
+    .replace(/<\|\s*DSML\s*\|\s*tool_calls\s*>\s*<\|\s*DSML\s*\|\s*invoke[\s\S]*?<\|\s*DSML\s*\|\s*\/tool_calls\s*>/g, '')
+    .replace(/<\|\s*DSML\s*\|\s*[^>]*>/g, '')
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace('</think>', '')
     .replace('<think>', '')

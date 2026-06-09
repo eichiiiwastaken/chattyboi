@@ -39,6 +39,11 @@ describe("sanitizeText", () => {
     expect(sanitizeText("text<has_function_call>more")).toBe("textmore");
   });
 
+  it("handles empty streamed text", () => {
+    expect(sanitizeText(undefined)).toBe("");
+    expect(sanitizeText(null)).toBe("");
+  });
+
   it("removes leaked DSML tool call blocks", () => {
     expect(
       sanitizeText(

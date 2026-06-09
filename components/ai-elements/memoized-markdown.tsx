@@ -20,7 +20,7 @@ import {
 } from "./code-block";
 
 type MemoizedMarkdownProps = HTMLAttributes<HTMLDivElement> & {
-  children: string;
+  children: string | null | undefined;
   id: string;
   components?: ComponentProps<typeof ReactMarkdown>["components"];
   remarkPlugins?: ComponentProps<typeof ReactMarkdown>["remarkPlugins"];
@@ -29,7 +29,8 @@ type MemoizedMarkdownProps = HTMLAttributes<HTMLDivElement> & {
 
 export const MemoizedMarkdown = memo(
   ({ children, className, id, ...props }: MemoizedMarkdownProps) => {
-    const blocks = useMemo(() => parseMarkdownIntoBlocks(children), [children]);
+    const content = children ?? "";
+    const blocks = useMemo(() => parseMarkdownIntoBlocks(content), [content]);
 
     return (
       <div className={className}>

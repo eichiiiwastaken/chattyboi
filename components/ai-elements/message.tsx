@@ -316,7 +316,7 @@ export const MessageBranchPage = ({
 };
 
 export type MessageResponseProps = ComponentProps<typeof MemoizedMarkdown> & {
-  children: string;
+  children: string | null | undefined;
 };
 
 export const MessageResponse = memo(

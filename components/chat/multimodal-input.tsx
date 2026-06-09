@@ -707,7 +707,7 @@ function PureModelSelectorCompact({
     return null;
   }
 
-  const [provider] = selectedModel.id.split("/");
+  const [provider] = (selectedModel.id ?? "").split("/");
 
   return (
     <ModelSelector onOpenChange={setOpen} open={open}>
@@ -752,7 +752,7 @@ function PureModelSelectorCompact({
             return sortedKeys.map((key) => (
               <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
                 {grouped[key].map(({ model, curated }) => {
-                  const logoProvider = model.id.split("/")[0];
+                  const logoProvider = (model.id ?? "").split("/")[0];
                   return (
                     <ModelSelectorItem
                       className="flex w-full"

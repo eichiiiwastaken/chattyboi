@@ -20,7 +20,7 @@ Images are built by GitHub Actions on push to `main` and published to `ghcr.io/<
 
 4. **Copy `docker-compose.yml` and `.env.example`** to the server. Rename `.env.example` to `.env` and fill in your secrets.
 
-5. **Set `CHATTYBOI_IMAGE` in `.env`** if you want Compose to pull from GHCR:
+5. **Set `CHATTYBOI_IMAGE` in `.env`** to the image published by GitHub Actions:
    ```bash
    CHATTYBOI_IMAGE=ghcr.io/YOUR_USERNAME/chattyboi:latest
    ```

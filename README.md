@@ -59,9 +59,7 @@ Edit `.env` with your API keys and secrets. See the comments in `.env.example` f
 echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 ```
 
-**5. Set the image in `.env`** (optional)
-
-By default, Compose builds from the local checkout. To pull a GHCR image instead, set:
+**5. Set the image in `.env`**
 
 ```bash
 CHATTYBOI_IMAGE=ghcr.io/YOUR_GITHUB_USERNAME/chattyboi:latest
@@ -81,4 +79,12 @@ The app will be available at `http://localhost:3232`.
 docker compose pull
 docker compose up -d
 docker image prune -f
+```
+
+### Local Docker Build
+
+To build the app image from your local checkout instead of pulling from GHCR:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 ```

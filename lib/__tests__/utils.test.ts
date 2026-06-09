@@ -49,6 +49,7 @@ describe("sanitizeText", () => {
 
   it("removes orphan DSML tags", () => {
     expect(sanitizeText("text<| DSML | tool_calls>more")).toBe("textmore");
+    expect(sanitizeText("text</| DSML | tool_calls>more")).toBe("textmore");
   });
 
   it("removes <think> blocks with content", () => {

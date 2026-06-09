@@ -73,6 +73,25 @@ docker compose up -d
 
 The app will be available at `http://localhost:3232`.
 
+### Fixing an existing Postgres volume
+
+Postgres only applies `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` when its data directory is first initialized. If the app logs `Role "chattyboi" does not exist`, your existing `pgdata` volume was created with different credentials.
+
+For an empty database, the simplest fix is to recreate the Postgres volume:
+
+```bash
+docker compose down
+docker volume rm chattyboi_pgdata
+docker compose up -d
+```
+
+If you need to keep existing data, create the missing role and grant it access instead:
+
+```bash
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE ROLE chattyboi WITH LOGIN PASSWORD '\''change-me'\'';"'
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "GRANT ALL PRIVILEGES ON DATABASE chattyboi TO chattyboi;"'
+```
+
 ### Updating
 
 ```bash

@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${CHATTYBOI_IMAGE:-ghcr.io/YOUR_GITHUB_USERNAME/chattyboi:latest}
+    image: ${CHATTYBOI_IMAGE:-ghcr.io/eichiiiwastaken/chattyboi:latest}
     ports:
       - "3232:3232"
     volumes:

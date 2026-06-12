@@ -88,7 +88,7 @@ export async function searchWeb(query: string) {
 
 export const webSearch = tool({
   description:
-    "Search the web for up-to-date information. Use this once to ask the best search query for the user's request.",
+    "Search the web for up-to-date information. YOU MAY ONLY CALL THIS TOOL ONCE per turn — after calling it, you will not be able to call it again. Ask the single best search query for the user's request.",
   inputSchema: z.object({
     query: z
       .string()

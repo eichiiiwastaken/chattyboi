@@ -33,7 +33,7 @@ export const systemPrompt = ({
 
   if (webSearchEnabled) {
     prompt +=
-      "\n\nWeb search is enabled. You may make up to one webSearch tool call if current or external information would materially improve the answer. If you use it, ask the best single search query for the user's request. Do not call webSearch more than once. After the tool result is returned, answer using the search results and cite sources by mentioning their title and URL when referencing information from them. If search is unnecessary, answer directly without calling the tool.";
+      "\n\nWeb search is enabled. IMPORTANT: You can call the webSearch tool EXACTLY ONCE per turn. You will NOT have a second chance — after one call, the tool is disabled for the rest of this turn. Think carefully and construct the single best search query before calling it. Only use webSearch if current or external information would materially improve the answer. After the tool result is returned, answer using the search results and cite sources by mentioning their title and URL when referencing information from them. If search is unnecessary, answer directly without calling the tool.";
   }
 
   return prompt;

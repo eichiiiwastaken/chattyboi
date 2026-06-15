@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -71,6 +71,32 @@ export function ChatShell() {
     }
   }, [chatId, setArtifact]);
 
+  const handleQuoteSelection = useCallback(
+    (text: string) => {
+      const quotedText = text
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => `> ${line}`)
+        .join("\n");
+
+      setInput((currentInput) => {
+        const trimmedInput = currentInput.trimEnd();
+        return trimmedInput
+          ? `${trimmedInput}\n\n${quotedText}\n\n`
+          : `${quotedText}\n\n`;
+      });
+
+      window.setTimeout(() => {
+        document
+          .querySelector<HTMLTextAreaElement>(
+            "[data-testid='multimodal-input']"
+          )
+          ?.focus();
+      }, 0);
+    },
+    [setInput]
+  );
+
   return (
     <>
       <div className="flex h-dvh w-full flex-row overflow-hidden">
@@ -102,6 +128,7 @@ export function ChatShell() {
                 setInput(text ?? "");
                 setEditingMessage(msg);
               }}
+              onQuoteSelection={handleQuoteSelection}
               regenerate={regenerate}
               searchSources={searchSources}
               selectedModelId={currentModelId}

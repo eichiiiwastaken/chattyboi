@@ -1,5 +1,8 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
+import { QuoteIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
 import { MessageContent, MessageResponse } from "../ai-elements/message";
@@ -11,6 +14,12 @@ import {
   ToolInput,
   ToolOutput,
 } from "../ai-elements/tool";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -19,6 +28,141 @@ import { MessageActions } from "./message-actions";
 import { MessageReasoning } from "./message-reasoning";
 import { PreviewAttachment } from "./preview-attachment";
 import { Weather } from "./weather";
+
+type QuoteSelectionState = {
+  left: number;
+  text: string;
+  top: number;
+};
+
+function QuoteSelectionPopover({
+  children,
+  className,
+  onQuote,
+}: {
+  children: ReactNode;
+  className?: string;
+  onQuote?: (text: string) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [selection, setSelection] = useState<QuoteSelectionState | null>(null);
+
+  const hideSelection = useCallback(() => {
+    setSelection(null);
+  }, []);
+
+  const updateSelection = useCallback(() => {
+    if (!onQuote) {
+      return;
+    }
+
+    const activeSelection = window.getSelection();
+    const selectedText = activeSelection?.toString().trim();
+
+    if (!(activeSelection && selectedText && activeSelection.rangeCount > 0)) {
+      hideSelection();
+      return;
+    }
+
+    const range = activeSelection.getRangeAt(0);
+    const root = rootRef.current;
+    const ancestor =
+      range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+        ? range.commonAncestorContainer
+        : range.commonAncestorContainer.parentNode;
+
+    if (!(root && ancestor && root.contains(ancestor))) {
+      hideSelection();
+      return;
+    }
+
+    const rangeRect = range.getBoundingClientRect();
+    const firstRect = range.getClientRects()[0];
+    const rect =
+      rangeRect.width > 0 || rangeRect.height > 0 ? rangeRect : firstRect;
+
+    if (!rect) {
+      hideSelection();
+      return;
+    }
+
+    setSelection({
+      left: Math.min(
+        Math.max(rect.left + rect.width / 2, 28),
+        window.innerWidth - 28
+      ),
+      text: selectedText,
+      top: Math.max(rect.top - 44, 8),
+    });
+  }, [hideSelection, onQuote]);
+
+  useEffect(() => {
+    if (!onQuote) {
+      return;
+    }
+
+    document.addEventListener("selectionchange", updateSelection);
+
+    return () => {
+      document.removeEventListener("selectionchange", updateSelection);
+    };
+  }, [onQuote, updateSelection]);
+
+  useEffect(() => {
+    if (!selection) {
+      return;
+    }
+
+    window.addEventListener("resize", hideSelection);
+    window.addEventListener("scroll", hideSelection, true);
+
+    return () => {
+      window.removeEventListener("resize", hideSelection);
+      window.removeEventListener("scroll", hideSelection, true);
+    };
+  }, [hideSelection, selection]);
+
+  const quoteSelection = useCallback(() => {
+    if (!selection) {
+      return;
+    }
+
+    onQuote?.(selection.text);
+    setSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }, [onQuote, selection]);
+
+  if (!onQuote) {
+    return children;
+  }
+
+  return (
+    <div className={className} ref={rootRef}>
+      {children}
+      {selection && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                aria-label="Quote selection"
+                className="fixed z-50 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
+                onClick={quoteSelection}
+                onMouseDown={(event) => event.preventDefault()}
+                style={{ left: selection.left, top: selection.top }}
+                type="button"
+              >
+                <QuoteIcon className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={6}>
+              <p>Quote selection</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+    </div>
+  );
+}
 
 const PurePreviewMessage = ({
   addToolApprovalResponse,
@@ -30,6 +174,7 @@ const PurePreviewMessage = ({
   isReadonly,
   requiresScrollPadding: _requiresScrollPadding,
   onEdit,
+  onQuoteSelection,
   searchSources,
   statsForNerds,
 }: {
@@ -42,6 +187,7 @@ const PurePreviewMessage = ({
   isReadonly: boolean;
   requiresScrollPadding: boolean;
   onEdit?: (message: ChatMessage) => void;
+  onQuoteSelection?: (text: string) => void;
   searchSources?: Array<{ title: string; url: string }> | null;
   statsForNerds?: boolean;
 }) => {
@@ -421,11 +567,14 @@ const PurePreviewMessage = ({
             </div>
           </div>
         )}
-        {isAssistant ? (
-          <div className="flex min-w-0 flex-1 flex-col gap-2">{content}</div>
-        ) : (
-          content
-        )}
+        <QuoteSelectionPopover
+          className={
+            isAssistant ? "flex min-w-0 flex-1 flex-col gap-2" : "contents"
+          }
+          onQuote={onQuoteSelection}
+        >
+          {content}
+        </QuoteSelectionPopover>
       </div>
     </div>
   );

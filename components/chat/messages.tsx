@@ -22,6 +22,7 @@ type MessagesProps = {
   isLoading?: boolean;
   selectedModelId: string;
   onEditMessage?: (message: ChatMessage) => void;
+  onQuoteSelection?: (text: string) => void;
   searchSources?: Array<{ title: string; url: string }> | null;
   statsForNerds?: boolean;
 };
@@ -38,6 +39,7 @@ function PureMessages({
   isLoading,
   selectedModelId: _selectedModelId,
   onEditMessage,
+  onQuoteSelection,
   searchSources,
   statsForNerds,
 }: MessagesProps) {
@@ -89,6 +91,7 @@ function PureMessages({
               key={message.id}
               message={message}
               onEdit={onEditMessage}
+              onQuoteSelection={onQuoteSelection}
               regenerate={regenerate}
               requiresScrollPadding={
                 hasSentMessage && index === messages.length - 1

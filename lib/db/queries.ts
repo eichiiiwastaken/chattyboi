@@ -11,6 +11,7 @@ import {
   inArray,
   lt,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -58,6 +59,41 @@ export async function createUser(email: string, password: string) {
   }
 }
 
+export async function getOrCreateUser(email: string, password: string) {
+  const hashedPassword = generateHashedPassword(password);
+
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${email})::bigint)`
+      );
+
+      const existing = await tx
+        .select()
+        .from(user)
+        .where(eq(user.email, email));
+      if (existing.length > 0) {
+        return existing[0];
+      }
+
+      const [created] = await tx
+        .insert(user)
+        .values({ email, password: hashedPassword })
+        .returning();
+
+      return created ?? null;
+    });
+  } catch (_error) {
+    if (_error instanceof ChatbotError) {
+      throw _error;
+    }
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get or create user"
+    );
+  }
+}
+
 export async function createGuestUser() {
   const email = `guest-${Date.now()}`;
   const password = generateHashedPassword(generateUUID());
@@ -96,6 +132,43 @@ export async function saveChat({
     });
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to save chat");
+  }
+}
+
+export async function saveChatWithMessages({
+  chat: chatInput,
+  messages,
+}: {
+  chat: {
+    id: string;
+    userId: string;
+    title: string;
+    visibility: VisibilityType;
+  };
+  messages: DBMessage[];
+}) {
+  try {
+    return await db.transaction(async (tx) => {
+      const savedChat = await tx
+        .insert(chat)
+        .values({
+          id: chatInput.id,
+          createdAt: new Date(),
+          userId: chatInput.userId,
+          title: chatInput.title,
+          visibility: chatInput.visibility,
+        })
+        .returning();
+
+      await tx.insert(message).values(messages);
+
+      return savedChat;
+    });
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to save chat with messages"
+    );
   }
 }
 

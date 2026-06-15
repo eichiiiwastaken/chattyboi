@@ -194,6 +194,11 @@ textarea:focus-visible {
   outline: none;
 }
 
+[data-testid="message-content"] ::selection {
+  background: oklch(0.56 0.22 350 / 0.75);
+  color: white;
+}
+
 @utility text-balance {
   text-wrap: balance;
 }

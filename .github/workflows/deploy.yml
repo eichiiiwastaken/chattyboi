@@ -47,7 +47,7 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.OWNER_LOWER }}/chattyboi:${{ github.sha }}-${{ matrix.suffix }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
 
   merge:
     runs-on: ubuntu-latest

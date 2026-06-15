@@ -35,6 +35,24 @@ type QuoteSelectionState = {
   top: number;
 };
 
+function isUsableRect(rect: DOMRect) {
+  return rect.width > 0 || rect.height > 0;
+}
+
+function isSelectionBackward(selection: Selection) {
+  if (!(selection.anchorNode && selection.focusNode)) {
+    return false;
+  }
+
+  const testRange = document.createRange();
+  testRange.setStart(selection.anchorNode, selection.anchorOffset);
+  testRange.setEnd(selection.focusNode, selection.focusOffset);
+  const isBackward = testRange.collapsed;
+  testRange.detach();
+
+  return isBackward;
+}
+
 function QuoteSelectionPopover({
   children,
   className,
@@ -76,23 +94,47 @@ function QuoteSelectionPopover({
       return;
     }
 
-    const rangeRect = range.getBoundingClientRect();
-    const firstRect = range.getClientRects()[0];
-    const rect =
-      rangeRect.width > 0 || rangeRect.height > 0 ? rangeRect : firstRect;
+    const focusNode = activeSelection.focusNode;
+    if (!focusNode) {
+      hideSelection();
+      return;
+    }
 
-    if (!rect) {
+    const focusAncestor =
+      focusNode.nodeType === Node.ELEMENT_NODE
+        ? focusNode
+        : focusNode.parentNode;
+
+    if (!(focusAncestor && root.contains(focusAncestor))) {
+      hideSelection();
+      return;
+    }
+
+    const focusRange = document.createRange();
+    focusRange.setStart(focusNode, activeSelection.focusOffset);
+    focusRange.collapse(true);
+
+    const focusRect = focusRange.getClientRects()[0];
+    const rangeRects = Array.from(range.getClientRects());
+    const fallbackRect =
+      rangeRects[
+        isSelectionBackward(activeSelection) ? 0 : rangeRects.length - 1
+      ] ?? range.getBoundingClientRect();
+    const rect =
+      focusRect && isUsableRect(focusRect) ? focusRect : fallbackRect;
+
+    if (!rect || !isUsableRect(rect)) {
       hideSelection();
       return;
     }
 
     setSelection({
-      left: Math.min(
-        Math.max(rect.left + rect.width / 2, 28),
-        window.innerWidth - 28
-      ),
+      left: Math.min(Math.max(rect.right + 22, 28), window.innerWidth - 28),
       text: selectedText,
-      top: Math.max(rect.top - 44, 8),
+      top: Math.min(
+        Math.max(rect.top + rect.height / 2, 18),
+        window.innerHeight - 18
+      ),
     });
   }, [hideSelection, onQuote]);
 
@@ -145,7 +187,7 @@ function QuoteSelectionPopover({
             <TooltipTrigger asChild>
               <button
                 aria-label="Quote selection"
-                className="fixed z-50 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
+                className="fixed z-50 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
                 onClick={quoteSelection}
                 onMouseDown={(event) => event.preventDefault()}
                 style={{ left: selection.left, top: selection.top }}

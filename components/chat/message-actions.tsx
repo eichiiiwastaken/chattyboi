@@ -1,12 +1,40 @@
-import { memo } from "react";
+import {
+  BrainIcon,
+  CheckIcon,
+  EyeIcon,
+  InfoIcon,
+  RefreshCcwIcon,
+  WrenchIcon,
+} from "lucide-react";
+import { memo, useState } from "react";
 import { toast } from "sonner";
+import useSWR from "swr";
 import { useCopyToClipboard } from "usehooks-ts";
+import {
+  ModelSelector,
+  ModelSelectorContent,
+  ModelSelectorGroup,
+  ModelSelectorInput,
+  ModelSelectorItem,
+  ModelSelectorList,
+  ModelSelectorLogo,
+  ModelSelectorName,
+  ModelSelectorTrigger,
+} from "@/components/ai-elements/model-selector";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { ChatModel, ModelCapabilities } from "@/lib/ai/models";
 import type { ChatMessage } from "@/lib/types";
 import {
   MessageAction as Action,
   MessageActions as Actions,
 } from "../ai-elements/message";
-import { CopyIcon, PencilEditIcon } from "./icons";
+import { CopyIcon, PencilEditIcon, T3AttachIcon } from "./icons";
 import { MessageStats } from "./message-stats";
 
 export function PureMessageActions({
@@ -14,12 +42,16 @@ export function PureMessageActions({
   message,
   isLoading,
   onEdit,
+  onRetry,
+  selectedModelId,
   statsForNerds,
 }: {
   chatId: string;
   message: ChatMessage;
   isLoading: boolean;
   onEdit?: () => void;
+  onRetry?: (message: ChatMessage, modelId?: string) => Promise<void> | void;
+  selectedModelId: string;
   statsForNerds?: boolean;
 }) {
   const [_, copyToClipboard] = useCopyToClipboard();
@@ -57,6 +89,13 @@ export function PureMessageActions({
             <PencilEditIcon />
           </Action>
         )}
+        {onRetry && (
+          <RetryMenu
+            message={message}
+            onRetry={onRetry}
+            selectedModelId={selectedModelId}
+          />
+        )}
         <Action
           className="size-7 text-muted-foreground/50 hover:text-foreground"
           onClick={handleCopy}
@@ -77,8 +116,147 @@ export function PureMessageActions({
       >
         <CopyIcon />
       </Action>
+      {onRetry && (
+        <RetryMenu
+          message={message}
+          onRetry={onRetry}
+          selectedModelId={selectedModelId}
+        />
+      )}
       {statsForNerds && <MessageStats message={message} />}
     </Actions>
+  );
+}
+
+function RetryMenu({
+  message,
+  onRetry,
+  selectedModelId,
+}: {
+  message: ChatMessage;
+  onRetry: (message: ChatMessage, modelId?: string) => Promise<void> | void;
+  selectedModelId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data: modelsData } = useSWR(
+    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { revalidateOnFocus: false, dedupingInterval: 3_600_000 }
+  );
+
+  const capabilities: Record<string, ModelCapabilities> | undefined =
+    modelsData?.capabilities ?? modelsData;
+  const allModels: ChatModel[] = modelsData?.models ?? [];
+  const curatedIds = new Set(allModels.map((model) => model.id));
+  const grouped: Record<string, { model: ChatModel; curated: boolean }[]> = {};
+
+  for (const model of allModels) {
+    const key = model.provider;
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push({ model, curated: curatedIds.has(model.id) });
+  }
+
+  const sortedKeys = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
+  const providerNames: Record<string, string> = {
+    opencodego: "OpenCodeGo",
+    openrouter: "OpenRouter",
+  };
+
+  return (
+    <ModelSelector onOpenChange={setOpen} open={open}>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ModelSelectorTrigger asChild>
+              <Button
+                aria-label="Retry"
+                className="size-7 text-muted-foreground/50 hover:text-foreground"
+                data-testid="message-retry-button"
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <RefreshCcwIcon className="size-4" />
+              </Button>
+            </ModelSelectorTrigger>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Retry</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <ModelSelectorContent className="w-[300px]">
+        <div className="border-border/50 border-b p-1.5">
+          <button
+            className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+            onClick={() => {
+              setOpen(false);
+              Promise.resolve(onRetry(message)).catch(() => undefined);
+            }}
+            type="button"
+          >
+            <RefreshCcwIcon className="size-4 shrink-0 text-primary" />
+            <span className="flex-1">Retry same</span>
+            <InfoIcon className="size-4 shrink-0 text-muted-foreground" />
+          </button>
+          <div className="flex items-center gap-3 px-2 py-2 text-muted-foreground text-xs">
+            <span className="h-px flex-1 bg-border/60" />
+            <span>or switch model</span>
+            <span className="h-px flex-1 bg-border/60" />
+          </div>
+        </div>
+        <ModelSelectorInput placeholder="Search models..." />
+        <ModelSelectorList>
+          {sortedKeys.map((key) => (
+            <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
+              {grouped[key].map(({ model, curated }) => {
+                const logoProvider = (model.id ?? "").split("/")[0];
+                return (
+                  <ModelSelectorItem
+                    className="flex w-full"
+                    key={model.id}
+                    onSelect={() => {
+                      if (!curated) {
+                        return;
+                      }
+                      setOpen(false);
+                      Promise.resolve(onRetry(message, model.id)).catch(
+                        () => undefined
+                      );
+                    }}
+                    value={model.id}
+                  >
+                    {model.id === selectedModelId ? (
+                      <CheckIcon className="size-4 shrink-0 text-foreground" />
+                    ) : (
+                      <span className="size-4 shrink-0" />
+                    )}
+                    <ModelSelectorLogo provider={logoProvider} />
+                    <ModelSelectorName>{model.name}</ModelSelectorName>
+                    <div className="ml-auto flex items-center gap-2 text-foreground/70">
+                      {capabilities?.[model.id]?.tools && (
+                        <WrenchIcon className="size-3.5" />
+                      )}
+                      {capabilities?.[model.id]?.vision && (
+                        <EyeIcon className="size-3.5" />
+                      )}
+                      {capabilities?.[model.id]?.file && (
+                        <T3AttachIcon size={14} />
+                      )}
+                      {capabilities?.[model.id]?.reasoning && (
+                        <BrainIcon className="size-3.5" />
+                      )}
+                    </div>
+                  </ModelSelectorItem>
+                );
+              })}
+            </ModelSelectorGroup>
+          ))}
+        </ModelSelectorList>
+      </ModelSelectorContent>
+    </ModelSelector>
   );
 }
 
@@ -89,6 +267,12 @@ export const MessageActions = memo(
       return false;
     }
     if (prevProps.statsForNerds !== nextProps.statsForNerds) {
+      return false;
+    }
+    if (prevProps.selectedModelId !== nextProps.selectedModelId) {
+      return false;
+    }
+    if (prevProps.onRetry !== nextProps.onRetry) {
       return false;
     }
     return true;

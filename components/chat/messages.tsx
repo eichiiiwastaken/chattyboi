@@ -23,6 +23,7 @@ type MessagesProps = {
   selectedModelId: string;
   onEditMessage?: (message: ChatMessage) => void;
   onQuoteSelection?: (text: string) => void;
+  onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
   searchSources?: Array<{ title: string; url: string }> | null;
   statsForNerds?: boolean;
 };
@@ -37,9 +38,10 @@ function PureMessages({
   isReadonly,
   isArtifactVisible,
   isLoading,
-  selectedModelId: _selectedModelId,
+  selectedModelId,
   onEditMessage,
   onQuoteSelection,
+  onRetryMessage,
   searchSources,
   statsForNerds,
 }: MessagesProps) {
@@ -92,6 +94,7 @@ function PureMessages({
               message={message}
               onEdit={onEditMessage}
               onQuoteSelection={onQuoteSelection}
+              onRetryMessage={onRetryMessage}
               regenerate={regenerate}
               requiresScrollPadding={
                 hasSentMessage && index === messages.length - 1
@@ -99,6 +102,7 @@ function PureMessages({
               searchSources={
                 index === messages.length - 1 ? searchSources : null
               }
+              selectedModelId={selectedModelId}
               setMessages={setMessages}
               statsForNerds={statsForNerds}
             />

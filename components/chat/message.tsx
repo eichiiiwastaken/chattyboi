@@ -214,9 +214,11 @@ const PurePreviewMessage = ({
   setMessages: _setMessages,
   regenerate: _regenerate,
   isReadonly,
+  selectedModelId,
   requiresScrollPadding: _requiresScrollPadding,
   onEdit,
   onQuoteSelection,
+  onRetryMessage,
   searchSources,
   statsForNerds,
 }: {
@@ -227,9 +229,11 @@ const PurePreviewMessage = ({
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
   isReadonly: boolean;
+  selectedModelId?: string;
   requiresScrollPadding: boolean;
   onEdit?: (message: ChatMessage) => void;
   onQuoteSelection?: (text: string) => void;
+  onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
   searchSources?: Array<{ title: string; url: string }> | null;
   statsForNerds?: boolean;
 }) => {
@@ -550,6 +554,8 @@ const PurePreviewMessage = ({
       key={`action-${message.id}`}
       message={message}
       onEdit={onEdit ? () => onEdit(message) : undefined}
+      onRetry={onRetryMessage}
+      selectedModelId={selectedModelId ?? ""}
       statsForNerds={statsForNerds}
     />
   );

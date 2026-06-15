@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { deleteTrailingMessages } from "@/app/(chat)/actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +28,12 @@ import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
 
+function setCookie(name: string, value: string) {
+  const maxAge = 60 * 60 * 24 * 365;
+  // biome-ignore lint/suspicious/noDocumentCookie: needed for client-side cookie setting
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
+}
+
 export function ChatShell() {
   const {
     chatId,
@@ -46,7 +54,9 @@ export function ChatShell() {
     setCurrentModelId,
     showCreditCardAlert,
     setShowCreditCardAlert,
+    webSearchEnabled,
     searchSources,
+    setSearchSources,
     settings,
   } = useActiveChat();
 
@@ -97,6 +107,42 @@ export function ChatShell() {
     [setInput]
   );
 
+  const handleRetryMessage = useCallback(
+    async (message: ChatMessage, modelId?: string) => {
+      const retryModelId = modelId ?? currentModelId;
+
+      try {
+        if (modelId) {
+          setCurrentModelId(modelId);
+          setCookie("chat-model", modelId);
+        }
+
+        if (!webSearchEnabled) {
+          setSearchSources(null);
+        }
+
+        await deleteTrailingMessages({ id: message.id });
+        await regenerate({
+          messageId: message.id,
+          body: {
+            selectedChatModel: retryModelId,
+            ...(webSearchEnabled ? { webSearchEnabled: true } : {}),
+          },
+        });
+      } catch (error) {
+        console.error("[retry] Failed to retry message:", error);
+        toast.error("Failed to retry message");
+      }
+    },
+    [
+      currentModelId,
+      regenerate,
+      setCurrentModelId,
+      setSearchSources,
+      webSearchEnabled,
+    ]
+  );
+
   return (
     <>
       <div className="flex h-dvh w-full flex-row overflow-hidden">
@@ -129,6 +175,7 @@ export function ChatShell() {
                 setEditingMessage(msg);
               }}
               onQuoteSelection={handleQuoteSelection}
+              onRetryMessage={handleRetryMessage}
               regenerate={regenerate}
               searchSources={searchSources}
               selectedModelId={currentModelId}

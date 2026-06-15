@@ -3,8 +3,17 @@ import { createClient } from "redis";
 import { isProductionEnvironment } from "@/lib/constants";
 import { ChatbotError } from "@/lib/errors";
 
-const MAX_MESSAGES = 10;
 const TTL_SECONDS = 60 * 60;
+
+function getIpMaxMessagesPerHour() {
+  const rawLimit = process.env.IP_MAX_MESSAGES_PER_HOUR;
+  if (!rawLimit) {
+    return null;
+  }
+
+  const parsedLimit = Number.parseInt(rawLimit, 10);
+  return Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : null;
+}
 
 let client: ReturnType<typeof createClient> | null = null;
 
@@ -20,7 +29,8 @@ function getClient() {
 }
 
 export async function checkIpRateLimit(ip: string | undefined) {
-  if (!isProductionEnvironment || !ip) {
+  const maxMessages = getIpMaxMessagesPerHour();
+  if (!(isProductionEnvironment && ip && maxMessages)) {
     return;
   }
 
@@ -37,7 +47,7 @@ export async function checkIpRateLimit(ip: string | undefined) {
       .expire(key, TTL_SECONDS, "NX")
       .exec();
 
-    if (typeof count === "number" && count > MAX_MESSAGES) {
+    if (typeof count === "number" && count > maxMessages) {
       throw new ChatbotError("rate_limit:chat");
     }
   } catch (error) {

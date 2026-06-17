@@ -39,18 +39,58 @@ function isUsableRect(rect: DOMRect) {
   return rect.width > 0 || rect.height > 0;
 }
 
-function isSelectionBackward(selection: Selection) {
-  if (!(selection.anchorNode && selection.focusNode)) {
-    return false;
+function getDeepTextEndpoint(node: Node, atEnd: boolean): Text | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node as Text;
   }
 
-  const testRange = document.createRange();
-  testRange.setStart(selection.anchorNode, selection.anchorOffset);
-  testRange.setEnd(selection.focusNode, selection.focusOffset);
-  const isBackward = testRange.collapsed;
-  testRange.detach();
+  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
 
-  return isBackward;
+  return walker[atEnd ? "lastChild" : "firstChild"]() as Text | null;
+}
+
+function getRangeEndRect(range: Range) {
+  let endpoint: { node: Text; offset: number } | null = null;
+
+  if (range.endContainer.nodeType === Node.TEXT_NODE) {
+    endpoint = { node: range.endContainer as Text, offset: range.endOffset };
+  } else {
+    const child =
+      range.endContainer.childNodes[Math.max(0, range.endOffset - 1)];
+    const textNode = child ? getDeepTextEndpoint(child, true) : null;
+
+    if (textNode) {
+      endpoint = { node: textNode, offset: textNode.length };
+    }
+  }
+
+  if (!endpoint) {
+    return null;
+  }
+
+  const endpointRange = document.createRange();
+  endpointRange.setStart(endpoint.node, endpoint.offset);
+  endpointRange.collapse(true);
+  const rect = endpointRange.getClientRects()[0] ?? null;
+  endpointRange.detach();
+
+  return rect;
+}
+
+function getVisualEndRect(rects: DOMRect[]) {
+  const usableRects = rects.filter(isUsableRect);
+
+  return usableRects.reduce<DOMRect | null>((endRect, rect) => {
+    if (!endRect) {
+      return rect;
+    }
+
+    const isLowerLine = rect.top > endRect.top + 4;
+    const isSameLineFurtherRight =
+      Math.abs(rect.top - endRect.top) <= 4 && rect.right > endRect.right;
+
+    return isLowerLine || isSameLineFurtherRight ? rect : endRect;
+  }, null);
 }
 
 function QuoteSelectionPopover({
@@ -94,34 +134,12 @@ function QuoteSelectionPopover({
       return;
     }
 
-    const focusNode = activeSelection.focusNode;
-    if (!focusNode) {
-      hideSelection();
-      return;
-    }
-
-    const focusAncestor =
-      focusNode.nodeType === Node.ELEMENT_NODE
-        ? focusNode
-        : focusNode.parentNode;
-
-    if (!(focusAncestor && root.contains(focusAncestor))) {
-      hideSelection();
-      return;
-    }
-
-    const focusRange = document.createRange();
-    focusRange.setStart(focusNode, activeSelection.focusOffset);
-    focusRange.collapse(true);
-
-    const focusRect = focusRange.getClientRects()[0];
+    const endpointRect = getRangeEndRect(range);
     const rangeRects = Array.from(range.getClientRects());
     const fallbackRect =
-      rangeRects[
-        isSelectionBackward(activeSelection) ? 0 : rangeRects.length - 1
-      ] ?? range.getBoundingClientRect();
+      getVisualEndRect(rangeRects) ?? range.getBoundingClientRect();
     const rect =
-      focusRect && isUsableRect(focusRect) ? focusRect : fallbackRect;
+      endpointRect && isUsableRect(endpointRect) ? endpointRect : fallbackRect;
 
     if (!rect || !isUsableRect(rect)) {
       hideSelection();

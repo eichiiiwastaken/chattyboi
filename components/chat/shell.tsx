@@ -58,6 +58,7 @@ export function ChatShell() {
     searchSources,
     setSearchSources,
     settings,
+    isOneTimeChat,
   } = useActiveChat();
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
@@ -121,7 +122,9 @@ export function ChatShell() {
           setSearchSources(null);
         }
 
-        await deleteTrailingMessages({ id: message.id });
+        if (!isOneTimeChat) {
+          await deleteTrailingMessages({ id: message.id });
+        }
         await regenerate({
           messageId: message.id,
           body: {
@@ -140,6 +143,7 @@ export function ChatShell() {
       setCurrentModelId,
       setSearchSources,
       webSearchEnabled,
+      isOneTimeChat,
     ]
   );
 
@@ -154,6 +158,7 @@ export function ChatShell() {
         >
           <ChatHeader
             chatId={chatId}
+            isOneTimeChat={isOneTimeChat}
             isReadonly={isReadonly}
             selectedVisibilityType={visibilityType}
           />
@@ -193,6 +198,7 @@ export function ChatShell() {
                   editingMessage={editingMessage}
                   input={input}
                   isLoading={isLoading}
+                  isOneTimeChat={isOneTimeChat}
                   messages={messages}
                   onCancelEdit={() => {
                     setEditingMessage(null);
@@ -209,6 +215,7 @@ export function ChatShell() {
                           await submitEditedMessage({
                             message: msg,
                             text: input,
+                            skipPersistence: isOneTimeChat,
                             setMessages,
                             regenerate,
                           });

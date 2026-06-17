@@ -10,10 +10,12 @@ function PureChatHeader({
   chatId,
   selectedVisibilityType,
   isReadonly,
+  isOneTimeChat,
 }: {
   chatId: string;
   selectedVisibilityType: VisibilityType;
   isReadonly: boolean;
+  isOneTimeChat: boolean;
 }) {
   const { state, toggleSidebar, isMobile } = useSidebar();
 
@@ -32,11 +34,17 @@ function PureChatHeader({
         <PanelLeftIcon className="size-4" />
       </Button>
 
-      {!isReadonly && (
-        <VisibilitySelector
-          chatId={chatId}
-          selectedVisibilityType={selectedVisibilityType}
-        />
+      {isOneTimeChat ? (
+        <div className="rounded-full border border-border/50 px-2.5 py-1 text-muted-foreground text-xs">
+          One-time chat
+        </div>
+      ) : (
+        !isReadonly && (
+          <VisibilitySelector
+            chatId={chatId}
+            selectedVisibilityType={selectedVisibilityType}
+          />
+        )
       )}
     </header>
   );
@@ -46,6 +54,7 @@ export const ChatHeader = memo(PureChatHeader, (prevProps, nextProps) => {
   return (
     prevProps.chatId === nextProps.chatId &&
     prevProps.selectedVisibilityType === nextProps.selectedVisibilityType &&
-    prevProps.isReadonly === nextProps.isReadonly
+    prevProps.isReadonly === nextProps.isReadonly &&
+    prevProps.isOneTimeChat === nextProps.isOneTimeChat
   );
 });

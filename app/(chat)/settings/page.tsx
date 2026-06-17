@@ -1,7 +1,8 @@
 "use client";
 
 import { CheckIcon, Copy } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { useCopyToClipboard } from "usehooks-ts";
@@ -118,6 +119,8 @@ function ModelSelectorCompact({
 }
 
 export default function SettingsPage() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [origin, setOrigin] = useState("");
   const { data: settings, mutate } = useSWR<{
     defaultSearchModel: string | null;
     webSearchEnabled: boolean;
@@ -130,6 +133,10 @@ export default function SettingsPage() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [_, copyToClipboard] = useCopyToClipboard();
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   const updateSetting = useCallback(
     async (patch: {
@@ -218,12 +225,32 @@ export default function SettingsPage() {
 
         <section className="space-y-4">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Default Model for Search
+            Appearance
+          </h2>
+          <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
+            <div className="flex items-center justify-between">
+              <Label className="text-[13px]" htmlFor="light-mode">
+                Light mode
+              </Label>
+              <Switch
+                checked={resolvedTheme === "light"}
+                id="light-mode"
+                onCheckedChange={(checked) =>
+                  setTheme(checked ? "light" : "dark")
+                }
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Default Model for Bang URLs
           </h2>
           <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
             <div className="space-y-2">
               <Label className="text-[13px]">
-                Default model used when web search is enabled
+                Default model used when starting a chat from a bang URL
               </Label>
               <ModelSelectorCompact
                 onModelChange={(modelId) =>
@@ -244,13 +271,14 @@ export default function SettingsPage() {
           <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
             <p className="text-[12px] text-muted-foreground">
               Use these URLs as custom search engines or DuckDuckGo bangs to
-              start a chat from anywhere.
+              start a chat from anywhere. The default model above applies when a
+              chat starts from either URL.
             </p>
             <div className="space-y-2">
               <Label className="text-[13px]">Chat (no search)</Label>
               <div className="flex items-center gap-1">
                 <code className="flex-1 rounded-md bg-muted px-3 py-2 text-[12px] text-muted-foreground">
-                  {`${typeof window === "undefined" ? "" : window.location.origin}/?q=%s`}
+                  {`${origin}/?q=%s`}
                 </code>
                 <Button
                   onClick={async () => {
@@ -268,7 +296,7 @@ export default function SettingsPage() {
               <Label className="text-[13px]">Chat with web search</Label>
               <div className="flex items-center gap-1">
                 <code className="flex-1 rounded-md bg-muted px-3 py-2 text-[12px] text-muted-foreground">
-                  {`${typeof window === "undefined" ? "" : window.location.origin}/?q=%s&search=true`}
+                  {`${origin}/?q=%s&search=true`}
                 </code>
                 <Button
                   onClick={async () => {

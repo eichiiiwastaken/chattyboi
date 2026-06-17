@@ -9,13 +9,17 @@ export async function submitEditedMessage({
   text,
   setMessages,
   regenerate,
+  skipPersistence = false,
 }: {
   message: ChatMessage;
   text: string;
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
+  skipPersistence?: boolean;
 }) {
-  await deleteTrailingMessages({ id: message.id });
+  if (!skipPersistence) {
+    await deleteTrailingMessages({ id: message.id });
+  }
 
   setMessages((messages) => {
     const index = messages.findIndex((m) => m.id === message.id);

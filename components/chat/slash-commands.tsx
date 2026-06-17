@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ClockIcon,
   ListIcon,
   PaletteIcon,
   PenLineIcon,
@@ -25,6 +26,12 @@ export const slashCommands: SlashCommand[] = [
     description: "Start a new chat",
     icon: <PenSquareIcon className="size-3.5" />,
     action: "new",
+  },
+  {
+    name: "temporary",
+    description: "Start a one-time chat",
+    icon: <ClockIcon className="size-3.5" />,
+    action: "temporary",
   },
   {
     name: "clear",

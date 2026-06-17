@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       selectedChatModel,
       selectedVisibilityType,
       webSearchEnabled,
+      isOneTimeChat,
     } = requestBody;
 
     const [, session] = await Promise.all([
@@ -111,9 +112,9 @@ export async function POST(request: Request) {
       return new ChatbotError("rate_limit:chat").toResponse();
     }
 
-    const isToolApprovalFlow = Boolean(messages);
+    const isToolApprovalFlow = Boolean(messages) && !isOneTimeChat;
 
-    const chat = await getChatById({ id });
+    const chat = isOneTimeChat ? null : await getChatById({ id });
     let messagesFromDb: DBMessage[] = [];
     let titlePromise: Promise<string> | null = null;
 
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
         return new ChatbotError("forbidden:chat").toResponse();
       }
       messagesFromDb = await getMessagesByChatId({ id });
-    } else if (message?.role === "user") {
+    } else if (!isOneTimeChat && message?.role === "user") {
       await saveChat({
         id,
         userId: session.user.id,
@@ -134,7 +135,9 @@ export async function POST(request: Request) {
 
     let uiMessages: ChatMessage[];
 
-    if (isToolApprovalFlow && messages) {
+    if (isOneTimeChat) {
+      uiMessages = (messages ?? (message ? [message] : [])) as ChatMessage[];
+    } else if (isToolApprovalFlow && messages) {
       const dbMessages = convertToUIMessages(messagesFromDb);
       const approvalStates = new Map(
         messages.flatMap(
@@ -179,7 +182,7 @@ export async function POST(request: Request) {
       country,
     };
 
-    if (message?.role === "user") {
+    if (!isOneTimeChat && message?.role === "user") {
       await saveMessages({
         messages: [
           {
@@ -323,6 +326,10 @@ export async function POST(request: Request) {
       },
       generateId: generateUUID,
       onFinish: async ({ messages: finishedMessages }) => {
+        if (isOneTimeChat) {
+          return;
+        }
+
         if (isToolApprovalFlow) {
           for (const finishedMsg of finishedMessages) {
             const existingMsg = uiMessages.find((m) => m.id === finishedMsg.id);
@@ -378,7 +385,7 @@ export async function POST(request: Request) {
     return createUIMessageStreamResponse({
       stream,
       async consumeSseStream({ stream: sseStream }) {
-        if (!process.env.REDIS_URL) {
+        if (isOneTimeChat || !process.env.REDIS_URL) {
           return;
         }
         try {

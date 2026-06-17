@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   createContext,
   type Dispatch,
@@ -57,6 +57,7 @@ type ActiveChatContextValue = {
   searchSources: SearchSource[] | null;
   setSearchSources: (sources: SearchSource[] | null) => void;
   settings: Settings | null;
+  isOneTimeChat: boolean;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -68,19 +69,22 @@ function extractChatId(pathname: string): string | null {
 
 export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { setDataStream } = useDataStream();
   const { mutate } = useSWRConfig();
 
   const chatIdFromUrl = extractChatId(pathname);
   const isNewChat = !chatIdFromUrl;
+  const isOneTimeChat = isNewChat && searchParams.get("temporary") === "true";
   const newChatIdRef = useRef(generateUUID());
-  const prevPathnameRef = useRef(pathname);
+  const currentChatRouteKey = `${pathname}?temporary=${isOneTimeChat}`;
+  const prevChatRouteKeyRef = useRef(currentChatRouteKey);
 
-  if (isNewChat && prevPathnameRef.current !== pathname) {
+  if (isNewChat && prevChatRouteKeyRef.current !== currentChatRouteKey) {
     newChatIdRef.current = generateUUID();
   }
-  prevPathnameRef.current = pathname;
+  prevChatRouteKeyRef.current = currentChatRouteKey;
 
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
 
@@ -105,7 +109,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     { revalidateOnFocus: false }
   );
 
-  const { data: settingsData } = useSWR<Settings>(
+  const { data: settingsData, error: settingsError } = useSWR<Settings>(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/settings`,
     fetcher,
     { revalidateOnFocus: false }
@@ -123,10 +127,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
     if (settings.webSearchEnabled) {
       setWebSearchEnabled(true);
-    }
-
-    if (settings.defaultSearchModel) {
-      setCurrentModelId(settings.defaultSearchModel);
     }
   }, [settings, isNewChat]);
 
@@ -168,6 +168,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       prepareSendMessagesRequest(request) {
         const lastMessage = request.messages.at(-1);
         const isToolApprovalContinuation =
+          isOneTimeChat ||
           lastMessage?.role !== "user" ||
           request.messages.some((msg) =>
             msg.parts?.some((part) => {
@@ -186,6 +187,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
               : { message: lastMessage }),
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibility,
+            isOneTimeChat,
             ...request.body,
           },
         };
@@ -195,7 +197,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onFinish: () => {
-      mutate(unstable_serialize(getChatHistoryPaginationKey));
+      if (!isOneTimeChat) {
+        mutate(unstable_serialize(getChatHistoryPaginationKey));
+      }
     },
     onError: (error) => {
       if (error.message?.includes("AI Gateway requires a valid credit card")) {
@@ -256,6 +260,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     const searchParam = params.get("search");
 
     if (query && !hasAppendedQueryRef.current) {
+      if (settingsData === undefined && !settingsError) {
+        return;
+      }
+
       hasAppendedQueryRef.current = true;
 
       // Enable web search if ?search=true or ?search=1 is present
@@ -264,8 +272,16 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         setWebSearchEnabled(true);
       }
 
+      const urlDefaultModel = settings?.defaultSearchModel;
+      if (urlDefaultModel) {
+        setCurrentModelId(urlDefaultModel);
+        currentModelIdRef.current = urlDefaultModel;
+      }
+
       router.replace(
-        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
+        isOneTimeChat
+          ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/?temporary=true`
+          : `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`
       );
 
       const send = () => {
@@ -280,7 +296,15 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
       send();
     }
-  }, [sendMessage, chatId, router]);
+  }, [
+    sendMessage,
+    chatId,
+    router,
+    isOneTimeChat,
+    settings?.defaultSearchModel,
+    settingsData,
+    settingsError,
+  ]);
 
   useAutoResume({
     autoResume: !isNewChat && !!chatData,
@@ -292,7 +316,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const isReadonly = isNewChat ? false : (chatData?.isReadonly ?? false);
 
   const { data: votes } = useSWR<Vote[]>(
-    !isReadonly && messages.length >= 2
+    !isOneTimeChat && !isReadonly && messages.length >= 2
       ? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/vote?chatId=${chatId}`
       : null,
     fetcher,
@@ -324,6 +348,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       searchSources,
       setSearchSources,
       settings,
+      isOneTimeChat,
     }),
     [
       chatId,
@@ -345,6 +370,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       webSearchEnabled,
       searchSources,
       settings,
+      isOneTimeChat,
     ]
   );
 

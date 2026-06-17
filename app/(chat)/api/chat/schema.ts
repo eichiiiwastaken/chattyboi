@@ -1,8 +1,10 @@
 import { z } from "zod";
 
+export const MAX_CHAT_TEXT_LENGTH = 100_000;
+
 const textPartSchema = z.object({
   type: z.enum(["text"]),
-  text: z.string().min(1).max(2000),
+  text: z.string().min(1).max(MAX_CHAT_TEXT_LENGTH),
 });
 
 const filePartSchema = z.object({
@@ -33,6 +35,7 @@ export const postRequestBodySchema = z.object({
   selectedChatModel: z.string(),
   selectedVisibilityType: z.enum(["public", "private"]),
   webSearchEnabled: z.boolean().optional(),
+  isOneTimeChat: z.boolean().optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

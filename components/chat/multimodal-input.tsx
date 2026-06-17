@@ -87,6 +87,7 @@ function PureMultimodalInput({
   editingMessage,
   onCancelEdit,
   isLoading: _isLoading,
+  isOneTimeChat,
 }: {
   chatId: string;
   input: string;
@@ -107,6 +108,7 @@ function PureMultimodalInput({
   editingMessage?: ChatMessage | null;
   onCancelEdit?: () => void;
   isLoading?: boolean;
+  isOneTimeChat?: boolean;
 }) {
   const router = useRouter();
   const { mutate } = useSWRConfig();
@@ -173,6 +175,9 @@ function PureMultimodalInput({
       case "new":
         router.push("/");
         break;
+      case "temporary":
+        router.push("/?temporary=true");
+        break;
       case "clear":
         setMessages(() => []);
         break;
@@ -190,6 +195,12 @@ function PureMultimodalInput({
         setTheme(resolvedTheme === "dark" ? "light" : "dark");
         break;
       case "delete":
+        if (isOneTimeChat) {
+          setMessages(() => []);
+          router.push("/");
+          toast.success("One-time chat cleared");
+          break;
+        }
         toast("Delete this chat?", {
           action: {
             label: "Delete",
@@ -225,7 +236,9 @@ function PureMultimodalInput({
   const [slashIndex, setSlashIndex] = useState(0);
 
   const submitForm = useCallback(() => {
-    router.push(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`);
+    if (!isOneTimeChat) {
+      router.push(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`);
+    }
 
     if (!webSearchEnabled) {
       setSearchSources(null);
@@ -271,6 +284,7 @@ function PureMultimodalInput({
     router,
     webSearchEnabled,
     setSearchSources,
+    isOneTimeChat,
   ]);
 
   const uploadFile = useCallback(async (file: File) => {

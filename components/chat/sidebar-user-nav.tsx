@@ -4,7 +4,6 @@ import { ChevronUp, SettingsIcon } from "lucide-react";
 import Link from "next/link";
 import type { User } from "next-auth";
 import { signOut, useSession } from "next-auth/react";
-import { useTheme } from "next-themes";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +30,6 @@ function nameToHue(name: string): number {
 
 export function SidebarUserNav({ user }: { user: User }) {
   const { status } = useSession();
-  const { setTheme, resolvedTheme } = useTheme();
   const { setOpenMobile } = useSidebar();
 
   const displayName = user.name || user.email || "User";
@@ -85,16 +83,6 @@ export function SidebarUserNav({ user }: { user: User }) {
                 <SettingsIcon className="size-4" />
                 Settings
               </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="cursor-pointer text-[13px]"
-              data-testid="user-nav-item-theme"
-              onSelect={() =>
-                setTheme(resolvedTheme === "dark" ? "light" : "dark")
-              }
-            >
-              {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild data-testid="user-nav-item-auth">

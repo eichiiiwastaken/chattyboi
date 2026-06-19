@@ -47,12 +47,15 @@ type SelectionPointerStart = {
   top: number;
 };
 
+type TextPosition = {
+  offset: number;
+  textNode: Text;
+};
+
+const QUOTE_ACTION_HALF_SIZE = 18;
+
 function isUsableRect(rect: DOMRect) {
   return rect.width > 0 || rect.height > 0;
-}
-
-function getFirstUsableRect(rects: DOMRect[]) {
-  return rects.find(isUsableRect) ?? null;
 }
 
 function getVisualEndRect(rects: DOMRect[]) {
@@ -103,6 +106,219 @@ function isSelectionBackward(selection: Selection) {
   directionRange.detach();
 
   return isBackward;
+}
+
+function getTextNodeAtEdge(node: Node, edge: "first" | "last"): Text | null {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const textNode = node as Text;
+    return textNode.data.trim() ? textNode : null;
+  }
+
+  const childNodes = Array.from(node.childNodes);
+  const orderedNodes = edge === "first" ? childNodes : childNodes.reverse();
+
+  for (const childNode of orderedNodes) {
+    const textNode = getTextNodeAtEdge(childNode, edge);
+
+    if (textNode) {
+      return textNode;
+    }
+  }
+
+  return null;
+}
+
+function getAdjacentTextNode(
+  node: Node,
+  root: HTMLElement,
+  direction: "next" | "previous"
+) {
+  let currentNode: Node | null = node;
+
+  while (currentNode && currentNode !== root) {
+    let sibling =
+      direction === "previous"
+        ? currentNode.previousSibling
+        : currentNode.nextSibling;
+
+    while (sibling) {
+      const textNode = getTextNodeAtEdge(
+        sibling,
+        direction === "previous" ? "last" : "first"
+      );
+
+      if (textNode) {
+        return textNode;
+      }
+
+      sibling =
+        direction === "previous"
+          ? sibling.previousSibling
+          : sibling.nextSibling;
+    }
+
+    currentNode = currentNode.parentNode;
+  }
+
+  return null;
+}
+
+function findTextPosition(
+  textNode: Text,
+  endpoint: SelectionEndpoint,
+  offset: number
+): TextPosition | null {
+  if (endpoint === "end") {
+    for (
+      let index = Math.min(offset - 1, textNode.length - 1);
+      index >= 0;
+      index -= 1
+    ) {
+      if (textNode.data[index]?.trim()) {
+        return { offset: index, textNode };
+      }
+    }
+
+    return null;
+  }
+
+  for (let index = Math.max(offset, 0); index < textNode.length; index += 1) {
+    if (textNode.data[index]?.trim()) {
+      return { offset: index, textNode };
+    }
+  }
+
+  return null;
+}
+
+function getElementFocusTextPosition(
+  focusNode: Node,
+  focusOffset: number,
+  endpoint: SelectionEndpoint
+) {
+  const childNodes = Array.from(focusNode.childNodes);
+
+  if (endpoint === "end") {
+    for (
+      let index = Math.min(focusOffset, childNodes.length) - 1;
+      index >= 0;
+      index -= 1
+    ) {
+      const textNode = getTextNodeAtEdge(childNodes[index], "last");
+      const position =
+        textNode && findTextPosition(textNode, endpoint, textNode.length);
+
+      if (position) {
+        return position;
+      }
+    }
+
+    return null;
+  }
+
+  for (
+    let index = Math.max(focusOffset, 0);
+    index < childNodes.length;
+    index += 1
+  ) {
+    const textNode = getTextNodeAtEdge(childNodes[index], "first");
+    const position = textNode && findTextPosition(textNode, endpoint, 0);
+
+    if (position) {
+      return position;
+    }
+  }
+
+  return null;
+}
+
+function getSelectionFocusTextPosition(
+  selection: Selection,
+  root: HTMLElement,
+  endpoint: SelectionEndpoint
+): TextPosition | null {
+  const focusNode = selection.focusNode;
+
+  if (!(focusNode && root.contains(focusNode))) {
+    return null;
+  }
+
+  if (focusNode.nodeType === Node.TEXT_NODE) {
+    const textNode = focusNode as Text;
+    const position = findTextPosition(
+      textNode,
+      endpoint,
+      selection.focusOffset
+    );
+
+    if (position) {
+      return position;
+    }
+
+    const adjacentTextNode = getAdjacentTextNode(
+      textNode,
+      root,
+      endpoint === "end" ? "previous" : "next"
+    );
+
+    return adjacentTextNode
+      ? findTextPosition(
+          adjacentTextNode,
+          endpoint,
+          endpoint === "end" ? adjacentTextNode.length : 0
+        )
+      : null;
+  }
+
+  const position = getElementFocusTextPosition(
+    focusNode,
+    selection.focusOffset,
+    endpoint
+  );
+
+  if (position) {
+    return position;
+  }
+
+  const adjacentTextNode = getAdjacentTextNode(
+    focusNode,
+    root,
+    endpoint === "end" ? "previous" : "next"
+  );
+
+  return adjacentTextNode
+    ? findTextPosition(
+        adjacentTextNode,
+        endpoint,
+        endpoint === "end" ? adjacentTextNode.length : 0
+      )
+    : null;
+}
+
+function getTextPositionRect(
+  position: TextPosition,
+  endpoint: SelectionEndpoint
+) {
+  const characterRange = document.createRange();
+  characterRange.setStart(position.textNode, position.offset);
+  characterRange.setEnd(position.textNode, position.offset + 1);
+  const characterRect =
+    endpoint === "start"
+      ? getVisualStartRect(Array.from(characterRange.getClientRects()))
+      : getVisualEndRect(Array.from(characterRange.getClientRects()));
+  characterRange.detach();
+
+  return characterRect;
+}
+
+function getSelectionFocusTextRect(
+  selection: Selection,
+  root: HTMLElement,
+  endpoint: SelectionEndpoint
+) {
+  const position = getSelectionFocusTextPosition(selection, root, endpoint);
+
+  return position ? getTextPositionRect(position, endpoint) : null;
 }
 
 function getSelectedTextEndpointRect(
@@ -170,27 +386,11 @@ function getSelectedTextEndpointRect(
   return rect;
 }
 
-function getSelectionFocusRect(selection: Selection, root: HTMLElement) {
-  const focusNode = selection.focusNode;
-
-  if (!(focusNode && root.contains(focusNode))) {
-    return null;
-  }
-
-  const focusRange = document.createRange();
-  focusRange.setStart(focusNode, selection.focusOffset);
-  focusRange.collapse(true);
-
-  const rect =
-    getFirstUsableRect(Array.from(focusRange.getClientRects())) ??
-    focusRange.getBoundingClientRect();
-  focusRange.detach();
-
-  return isUsableRect(rect) ? rect : null;
-}
-
 function getSelectionPosition(rect: DOMRect, endpoint: SelectionEndpoint) {
-  const horizontalAnchor = endpoint === "start" ? rect.left : rect.right;
+  const horizontalAnchor =
+    endpoint === "start"
+      ? rect.left - QUOTE_ACTION_HALF_SIZE
+      : rect.right + QUOTE_ACTION_HALF_SIZE;
 
   return {
     left: Math.min(Math.max(horizontalAnchor, 28), window.innerWidth - 28),
@@ -254,9 +454,13 @@ function QuoteSelectionPopover({
         : isSelectionBackward(activeSelection)
           ? "start"
           : "end";
-    const focusRect = getSelectionFocusRect(activeSelection, root);
+    const focusTextRect = getSelectionFocusTextRect(
+      activeSelection,
+      root,
+      endpoint
+    );
     const endpointRect =
-      focusRect ?? getSelectedTextEndpointRect(range, root, endpoint);
+      focusTextRect ?? getSelectedTextEndpointRect(range, root, endpoint);
     const fallbackRect =
       (endpoint === "start"
         ? getVisualStartRect(rangeRects)
@@ -270,7 +474,7 @@ function QuoteSelectionPopover({
     }
 
     setSelection({
-      ...getSelectionPosition(rect, focusRect ? "start" : endpoint),
+      ...getSelectionPosition(rect, endpoint),
       text: selectedText,
     });
   }, [hideSelection, onQuote]);

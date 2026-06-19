@@ -35,9 +35,15 @@ type QuoteSelectionState = {
   top: number;
 };
 
-type SelectionPointer = {
-  left: number;
+type SelectionEndpoint = "start" | "end";
+
+type SelectionDragEndpoint = {
+  endpoint: SelectionEndpoint;
   timestamp: number;
+};
+
+type SelectionPointerStart = {
+  left: number;
   top: number;
 };
 
@@ -58,6 +64,22 @@ function getVisualEndRect(rects: DOMRect[]) {
       Math.abs(rect.top - endRect.top) <= 4 && rect.right > endRect.right;
 
     return isLowerLine || isSameLineFurtherRight ? rect : endRect;
+  }, null);
+}
+
+function getVisualStartRect(rects: DOMRect[]) {
+  const usableRects = rects.filter(isUsableRect);
+
+  return usableRects.reduce<DOMRect | null>((startRect, rect) => {
+    if (!startRect) {
+      return rect;
+    }
+
+    const isHigherLine = rect.top < startRect.top - 4;
+    const isSameLineFurtherLeft =
+      Math.abs(rect.top - startRect.top) <= 4 && rect.left < startRect.left;
+
+    return isHigherLine || isSameLineFurtherLeft ? rect : startRect;
   }, null);
 }
 
@@ -82,7 +104,7 @@ function isSelectionBackward(selection: Selection) {
 function getSelectedTextEndpointRect(
   range: Range,
   root: HTMLElement,
-  endpoint: "start" | "end"
+  endpoint: SelectionEndpoint
 ) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let rect: DOMRect | null = null;
@@ -107,7 +129,7 @@ function getSelectedTextEndpointRect(
         const characterRange = document.createRange();
         characterRange.setStart(textNode, offset);
         characterRange.setEnd(textNode, offset + 1);
-        const characterRect = getVisualEndRect(
+        const characterRect = getVisualStartRect(
           Array.from(characterRange.getClientRects())
         );
         characterRange.detach();
@@ -144,6 +166,18 @@ function getSelectedTextEndpointRect(
   return rect;
 }
 
+function getSelectionPosition(rect: DOMRect, endpoint: SelectionEndpoint) {
+  const horizontalAnchor = endpoint === "start" ? rect.left : rect.right;
+
+  return {
+    left: Math.min(Math.max(horizontalAnchor, 28), window.innerWidth - 28),
+    top: Math.min(
+      Math.max(rect.top + rect.height / 2, 18),
+      window.innerHeight - 18
+    ),
+  };
+}
+
 function QuoteSelectionPopover({
   children,
   className,
@@ -154,12 +188,13 @@ function QuoteSelectionPopover({
   onQuote?: (text: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectionPointerStartedRef = useRef(false);
-  const selectionPointerRef = useRef<SelectionPointer | null>(null);
+  const selectionDragEndpointRef = useRef<SelectionDragEndpoint | null>(null);
+  const selectionPointerStartRef = useRef<SelectionPointerStart | null>(null);
   const [selection, setSelection] = useState<QuoteSelectionState | null>(null);
 
   const hideSelection = useCallback(() => {
-    selectionPointerRef.current = null;
+    selectionDragEndpointRef.current = null;
+    selectionPointerStartRef.current = null;
     setSelection(null);
   }, []);
 
@@ -188,28 +223,19 @@ function QuoteSelectionPopover({
       return;
     }
 
-    const recentPointer = selectionPointerRef.current;
-
-    if (recentPointer && Date.now() - recentPointer.timestamp < 750) {
-      setSelection({
-        left: Math.min(
-          Math.max(recentPointer.left + 22, 28),
-          window.innerWidth - 28
-        ),
-        text: selectedText,
-        top: Math.min(Math.max(recentPointer.top, 18), window.innerHeight - 18),
-      });
-      return;
-    }
-
     const rangeRects = Array.from(range.getClientRects());
-    const endpointRect = getSelectedTextEndpointRect(
-      range,
-      root,
-      isSelectionBackward(activeSelection) ? "start" : "end"
-    );
+    const recentDragEndpoint = selectionDragEndpointRef.current;
+    const endpoint =
+      recentDragEndpoint && Date.now() - recentDragEndpoint.timestamp < 750
+        ? recentDragEndpoint.endpoint
+        : isSelectionBackward(activeSelection)
+          ? "start"
+          : "end";
+    const endpointRect = getSelectedTextEndpointRect(range, root, endpoint);
     const fallbackRect =
-      getVisualEndRect(rangeRects) ?? range.getBoundingClientRect();
+      (endpoint === "start"
+        ? getVisualStartRect(rangeRects)
+        : getVisualEndRect(rangeRects)) ?? range.getBoundingClientRect();
     const rect =
       endpointRect && isUsableRect(endpointRect) ? endpointRect : fallbackRect;
 
@@ -219,12 +245,8 @@ function QuoteSelectionPopover({
     }
 
     setSelection({
-      left: Math.min(Math.max(rect.right + 22, 28), window.innerWidth - 28),
+      ...getSelectionPosition(rect, endpoint),
       text: selectedText,
-      top: Math.min(
-        Math.max(rect.top + rect.height / 2, 18),
-        window.innerHeight - 18
-      ),
     });
   }, [hideSelection, onQuote]);
 
@@ -251,22 +273,38 @@ function QuoteSelectionPopover({
       }
 
       const root = rootRef.current;
-      selectionPointerStartedRef.current = Boolean(
+      selectionPointerStartRef.current =
         root && event.target instanceof Node && root.contains(event.target)
-      );
-      selectionPointerRef.current = null;
+          ? {
+              left: event.clientX,
+              top: event.clientY,
+            }
+          : null;
+      selectionDragEndpointRef.current = null;
     };
 
     const handlePointerUp = (event: PointerEvent) => {
-      if (!selectionPointerStartedRef.current) {
+      const pointerStart = selectionPointerStartRef.current;
+
+      if (!pointerStart) {
         return;
       }
 
-      selectionPointerStartedRef.current = false;
-      selectionPointerRef.current = {
-        left: event.clientX,
+      const horizontalDelta = event.clientX - pointerStart.left;
+      const verticalDelta = event.clientY - pointerStart.top;
+      const endpoint =
+        Math.abs(verticalDelta) > 4
+          ? verticalDelta < 0
+            ? "start"
+            : "end"
+          : horizontalDelta < 0
+            ? "start"
+            : "end";
+
+      selectionPointerStartRef.current = null;
+      selectionDragEndpointRef.current = {
+        endpoint,
         timestamp: Date.now(),
-        top: event.clientY,
       };
       requestAnimationFrame(updateSelection);
     };

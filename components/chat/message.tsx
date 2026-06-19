@@ -55,7 +55,29 @@ function getVisualEndRect(rects: DOMRect[]) {
   }, null);
 }
 
-function getLastSelectedTextRect(range: Range, root: HTMLElement) {
+function isSelectionBackward(selection: Selection) {
+  if (!selection.anchorNode || !selection.focusNode) {
+    return false;
+  }
+
+  if (selection.anchorNode === selection.focusNode) {
+    return selection.focusOffset < selection.anchorOffset;
+  }
+
+  const directionRange = document.createRange();
+  directionRange.setStart(selection.anchorNode, selection.anchorOffset);
+  directionRange.setEnd(selection.focusNode, selection.focusOffset);
+  const isBackward = directionRange.collapsed;
+  directionRange.detach();
+
+  return isBackward;
+}
+
+function getSelectedTextEndpointRect(
+  range: Range,
+  root: HTMLElement,
+  endpoint: "start" | "end"
+) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let rect: DOMRect | null = null;
 
@@ -69,6 +91,28 @@ function getLastSelectedTextRect(range: Range, root: HTMLElement) {
     const start = textNode === range.startContainer ? range.startOffset : 0;
     const end =
       textNode === range.endContainer ? range.endOffset : textNode.length;
+
+    if (endpoint === "start") {
+      for (let offset = start; offset < end; offset += 1) {
+        if (!textNode.data[offset]?.trim()) {
+          continue;
+        }
+
+        const characterRange = document.createRange();
+        characterRange.setStart(textNode, offset);
+        characterRange.setEnd(textNode, offset + 1);
+        const characterRect = getVisualEndRect(
+          Array.from(characterRange.getClientRects())
+        );
+        characterRange.detach();
+
+        if (characterRect) {
+          return characterRect;
+        }
+      }
+
+      continue;
+    }
 
     for (let offset = end - 1; offset >= start; offset -= 1) {
       if (!textNode.data[offset]?.trim()) {
@@ -136,7 +180,11 @@ function QuoteSelectionPopover({
     }
 
     const rangeRects = Array.from(range.getClientRects());
-    const endpointRect = getLastSelectedTextRect(range, root);
+    const endpointRect = getSelectedTextEndpointRect(
+      range,
+      root,
+      isSelectionBackward(activeSelection) ? "start" : "end"
+    );
     const fallbackRect =
       getVisualEndRect(rangeRects) ?? range.getBoundingClientRect();
     const rect =

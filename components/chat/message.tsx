@@ -35,6 +35,12 @@ type QuoteSelectionState = {
   top: number;
 };
 
+type SelectionPointer = {
+  left: number;
+  timestamp: number;
+  top: number;
+};
+
 function isUsableRect(rect: DOMRect) {
   return rect.width > 0 || rect.height > 0;
 }
@@ -148,9 +154,12 @@ function QuoteSelectionPopover({
   onQuote?: (text: string) => void;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const selectionPointerStartedRef = useRef(false);
+  const selectionPointerRef = useRef<SelectionPointer | null>(null);
   const [selection, setSelection] = useState<QuoteSelectionState | null>(null);
 
   const hideSelection = useCallback(() => {
+    selectionPointerRef.current = null;
     setSelection(null);
   }, []);
 
@@ -176,6 +185,20 @@ function QuoteSelectionPopover({
 
     if (!(root && ancestor && root.contains(ancestor))) {
       hideSelection();
+      return;
+    }
+
+    const recentPointer = selectionPointerRef.current;
+
+    if (recentPointer && Date.now() - recentPointer.timestamp < 750) {
+      setSelection({
+        left: Math.min(
+          Math.max(recentPointer.left + 22, 28),
+          window.innerWidth - 28
+        ),
+        text: selectedText,
+        top: Math.min(Math.max(recentPointer.top, 18), window.innerHeight - 18),
+      });
       return;
     }
 
@@ -214,6 +237,46 @@ function QuoteSelectionPopover({
 
     return () => {
       document.removeEventListener("selectionchange", updateSelection);
+    };
+  }, [onQuote, updateSelection]);
+
+  useEffect(() => {
+    if (!onQuote) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+
+      const root = rootRef.current;
+      selectionPointerStartedRef.current = Boolean(
+        root && event.target instanceof Node && root.contains(event.target)
+      );
+      selectionPointerRef.current = null;
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!selectionPointerStartedRef.current) {
+        return;
+      }
+
+      selectionPointerStartedRef.current = false;
+      selectionPointerRef.current = {
+        left: event.clientX,
+        timestamp: Date.now(),
+        top: event.clientY,
+      };
+      requestAnimationFrame(updateSelection);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointerup", handlePointerUp);
     };
   }, [onQuote, updateSelection]);
 

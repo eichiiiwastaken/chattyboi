@@ -39,44 +39,6 @@ function isUsableRect(rect: DOMRect) {
   return rect.width > 0 || rect.height > 0;
 }
 
-function getDeepTextEndpoint(node: Node, atEnd: boolean): Text | null {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return node as Text;
-  }
-
-  const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-
-  return walker[atEnd ? "lastChild" : "firstChild"]() as Text | null;
-}
-
-function getRangeEndRect(range: Range) {
-  let endpoint: { node: Text; offset: number } | null = null;
-
-  if (range.endContainer.nodeType === Node.TEXT_NODE) {
-    endpoint = { node: range.endContainer as Text, offset: range.endOffset };
-  } else {
-    const child =
-      range.endContainer.childNodes[Math.max(0, range.endOffset - 1)];
-    const textNode = child ? getDeepTextEndpoint(child, true) : null;
-
-    if (textNode) {
-      endpoint = { node: textNode, offset: textNode.length };
-    }
-  }
-
-  if (!endpoint) {
-    return null;
-  }
-
-  const endpointRange = document.createRange();
-  endpointRange.setStart(endpoint.node, endpoint.offset);
-  endpointRange.collapse(true);
-  const rect = endpointRange.getClientRects()[0] ?? null;
-  endpointRange.detach();
-
-  return rect;
-}
-
 function getVisualEndRect(rects: DOMRect[]) {
   const usableRects = rects.filter(isUsableRect);
 
@@ -91,6 +53,45 @@ function getVisualEndRect(rects: DOMRect[]) {
 
     return isLowerLine || isSameLineFurtherRight ? rect : endRect;
   }, null);
+}
+
+function getLastSelectedTextRect(range: Range, root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let rect: DOMRect | null = null;
+
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode as Text;
+
+    if (!(textNode.data.trim() && range.intersectsNode(textNode))) {
+      continue;
+    }
+
+    const start = textNode === range.startContainer ? range.startOffset : 0;
+    const end =
+      textNode === range.endContainer ? range.endOffset : textNode.length;
+
+    for (let offset = end - 1; offset >= start; offset -= 1) {
+      if (!textNode.data[offset]?.trim()) {
+        continue;
+      }
+
+      const characterRange = document.createRange();
+      characterRange.setStart(textNode, offset);
+      characterRange.setEnd(textNode, offset + 1);
+      const characterRect = getVisualEndRect(
+        Array.from(characterRange.getClientRects())
+      );
+      characterRange.detach();
+
+      if (characterRect) {
+        rect = characterRect;
+      }
+
+      break;
+    }
+  }
+
+  return rect;
 }
 
 function QuoteSelectionPopover({
@@ -134,8 +135,8 @@ function QuoteSelectionPopover({
       return;
     }
 
-    const endpointRect = getRangeEndRect(range);
     const rangeRects = Array.from(range.getClientRects());
+    const endpointRect = getLastSelectedTextRect(range, root);
     const fallbackRect =
       getVisualEndRect(rangeRects) ?? range.getBoundingClientRect();
     const rect =

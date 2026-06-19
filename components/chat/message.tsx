@@ -51,6 +51,10 @@ function isUsableRect(rect: DOMRect) {
   return rect.width > 0 || rect.height > 0;
 }
 
+function getFirstUsableRect(rects: DOMRect[]) {
+  return rects.find(isUsableRect) ?? null;
+}
+
 function getVisualEndRect(rects: DOMRect[]) {
   const usableRects = rects.filter(isUsableRect);
 
@@ -166,6 +170,25 @@ function getSelectedTextEndpointRect(
   return rect;
 }
 
+function getSelectionFocusRect(selection: Selection, root: HTMLElement) {
+  const focusNode = selection.focusNode;
+
+  if (!(focusNode && root.contains(focusNode))) {
+    return null;
+  }
+
+  const focusRange = document.createRange();
+  focusRange.setStart(focusNode, selection.focusOffset);
+  focusRange.collapse(true);
+
+  const rect =
+    getFirstUsableRect(Array.from(focusRange.getClientRects())) ??
+    focusRange.getBoundingClientRect();
+  focusRange.detach();
+
+  return isUsableRect(rect) ? rect : null;
+}
+
 function getSelectionPosition(rect: DOMRect, endpoint: SelectionEndpoint) {
   const horizontalAnchor = endpoint === "start" ? rect.left : rect.right;
 
@@ -231,7 +254,9 @@ function QuoteSelectionPopover({
         : isSelectionBackward(activeSelection)
           ? "start"
           : "end";
-    const endpointRect = getSelectedTextEndpointRect(range, root, endpoint);
+    const focusRect = getSelectionFocusRect(activeSelection, root);
+    const endpointRect =
+      focusRect ?? getSelectedTextEndpointRect(range, root, endpoint);
     const fallbackRect =
       (endpoint === "start"
         ? getVisualStartRect(rangeRects)
@@ -245,7 +270,7 @@ function QuoteSelectionPopover({
     }
 
     setSelection({
-      ...getSelectionPosition(rect, endpoint),
+      ...getSelectionPosition(rect, focusRect ? "start" : endpoint),
       text: selectedText,
     });
   }, [hideSelection, onQuote]);

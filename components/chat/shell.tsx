@@ -59,6 +59,7 @@ export function ChatShell() {
     setSearchSources,
     settings,
     isOneTimeChat,
+    isNewChat,
   } = useActiveChat();
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
@@ -158,6 +159,8 @@ export function ChatShell() {
         >
           <ChatHeader
             chatId={chatId}
+            hasMessages={messages.length > 0}
+            isNewChat={isNewChat}
             isOneTimeChat={isOneTimeChat}
             isReadonly={isReadonly}
             selectedVisibilityType={visibilityType}

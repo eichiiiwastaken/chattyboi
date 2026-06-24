@@ -58,6 +58,7 @@ type ActiveChatContextValue = {
   setSearchSources: (sources: SearchSource[] | null) => void;
   settings: Settings | null;
   isOneTimeChat: boolean;
+  isNewChat: boolean;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -349,6 +350,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setSearchSources,
       settings,
       isOneTimeChat,
+      isNewChat,
     }),
     [
       chatId,

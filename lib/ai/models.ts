@@ -1,6 +1,9 @@
+import { gateway } from "@ai-sdk/gateway";
 import { isTestEnvironment } from "@/lib/constants";
+import { isGatewayConfigured, isProviderConfigured } from "./provider-config";
 
 export const DEFAULT_CHAT_MODEL = "opencodego/kimi-k2.6";
+export const GATEWAY_FALLBACK_CHAT_MODEL = "moonshotai/kimi-k2.6";
 
 export const titleModel = {
   id: "opencodego/kimi-k2.6",
@@ -58,7 +61,42 @@ export type ChatModel = {
   description: string;
 };
 
+function uniqueModels(models: ChatModel[]) {
+  const seen = new Set<string>();
+
+  return models.filter((model) => {
+    if (seen.has(model.id)) {
+      return false;
+    }
+
+    seen.add(model.id);
+    return true;
+  });
+}
+
+export async function fetchGatewayModels(): Promise<ChatModel[]> {
+  if (!isGatewayConfigured()) {
+    return [];
+  }
+
+  try {
+    const metadata = await gateway.getAvailableModels();
+    return (metadata.models ?? []).map((model) => ({
+      id: model.id,
+      name: model.name || model.id,
+      provider: model.id.split("/")[0] ?? "gateway",
+      description: model.description ?? "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchOpenCodeGoModels(): Promise<ChatModel[]> {
+  if (!isProviderConfigured("opencodego")) {
+    return [];
+  }
+
   try {
     const res = await fetch("https://opencode.ai/zen/go/v1/models", {
       next: { revalidate: 86_400 },
@@ -109,6 +147,10 @@ function isChatModel(modelId: string): boolean {
 }
 
 export async function fetchOpenRouterModels(): Promise<ChatModel[]> {
+  if (!isProviderConfigured("openrouter")) {
+    return [];
+  }
+
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       next: { revalidate: 86_400 },
@@ -132,12 +174,19 @@ export async function getAllModels(): Promise<ChatModel[]> {
   if (isTestEnvironment) {
     return MOCK_MODELS;
   }
-  const [openCodeGoModels, openRouterModels, openAIModels] = await Promise.all([
-    fetchOpenCodeGoModels(),
-    fetchOpenRouterModels(),
-    fetchOpenAIModels(),
+  const [gatewayModels, openCodeGoModels, openRouterModels, openAIModels] =
+    await Promise.all([
+      fetchGatewayModels(),
+      fetchOpenCodeGoModels(),
+      fetchOpenRouterModels(),
+      fetchOpenAIModels(),
+    ]);
+  return uniqueModels([
+    ...gatewayModels,
+    ...openCodeGoModels,
+    ...openRouterModels,
+    ...openAIModels,
   ]);
-  return [...openCodeGoModels, ...openRouterModels, ...openAIModels];
 }
 
 type OpenRouterRawModel = {
@@ -148,6 +197,10 @@ type OpenRouterRawModel = {
 };
 
 async function fetchOpenRouterRawData(): Promise<OpenRouterRawModel[]> {
+  if (!isProviderConfigured("openrouter")) {
+    return [];
+  }
+
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       next: { revalidate: 86_400 },
@@ -194,20 +247,50 @@ function inferOpenAICapabilities(modelId: string): ModelCapabilities {
   };
 }
 
+function inferGatewayCapabilities(modelId: string): ModelCapabilities {
+  const id = modelId.toLowerCase();
+  const hasVision =
+    /claude|gemini|gpt-4o|gpt-4\.1|gpt-5|image|pixtral|vision|vl/.test(id);
+
+  return {
+    tools: true,
+    vision: hasVision,
+    file: hasVision,
+    reasoning: /claude|deepseek-r1|glm|gpt-5|o[1-9]|reasoning|thinking/.test(
+      id
+    ),
+  };
+}
+
 export async function fetchAllModelData(): Promise<{
   allModels: ChatModel[];
   capabilities: Record<string, ModelCapabilities>;
 }> {
-  const [openCodeGoModels, openRouterModels, openRouterRawData, openAIModels] =
-    await Promise.all([
-      fetchOpenCodeGoModels(),
-      fetchOpenRouterModels(),
-      fetchOpenRouterRawData(),
-      fetchOpenAIModels(),
-    ]);
+  const [
+    gatewayModels,
+    openCodeGoModels,
+    openRouterModels,
+    openRouterRawData,
+    openAIModels,
+  ] = await Promise.all([
+    fetchGatewayModels(),
+    fetchOpenCodeGoModels(),
+    fetchOpenRouterModels(),
+    fetchOpenRouterRawData(),
+    fetchOpenAIModels(),
+  ]);
 
-  const allModels = [...openCodeGoModels, ...openRouterModels, ...openAIModels];
+  const allModels = uniqueModels([
+    ...gatewayModels,
+    ...openCodeGoModels,
+    ...openRouterModels,
+    ...openAIModels,
+  ]);
   const capabilities: Record<string, ModelCapabilities> = {};
+
+  for (const model of gatewayModels) {
+    capabilities[model.id] = inferGatewayCapabilities(model.id);
+  }
 
   for (const modelData of openRouterRawData) {
     capabilities[`openrouter/${modelData.id}`] = parseCapabilities(modelData);

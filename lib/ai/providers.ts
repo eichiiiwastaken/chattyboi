@@ -1,8 +1,10 @@
+import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { customProvider } from "ai";
 import { isTestEnvironment } from "../constants";
-import { titleModel } from "./models";
+import { GATEWAY_FALLBACK_CHAT_MODEL, titleModel } from "./models";
+import { isGatewayConfigured, shouldUseGateway } from "./provider-config";
 
 const opencodego = createOpenAICompatible({
   baseURL: "https://opencode.ai/zen/go/v1/",
@@ -34,6 +36,10 @@ export function getLanguageModel(modelId: string) {
     return myProvider.languageModel("chat-model");
   }
 
+  if (shouldUseGateway(modelId)) {
+    return gateway(modelId);
+  }
+
   const [provider, ...rest] = modelId.split("/");
   const actualModelId = rest.join("/");
 
@@ -53,6 +59,10 @@ export function getLanguageModel(modelId: string) {
 export function getTitleModel() {
   if (isTestEnvironment && myProvider) {
     return myProvider.languageModel("title-model");
+  }
+
+  if (isGatewayConfigured()) {
+    return gateway(GATEWAY_FALLBACK_CHAT_MODEL);
   }
 
   const [provider, ...rest] = titleModel.id.split("/");

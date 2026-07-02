@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getMissingProviderConfig,
   getProviderFromModelId,
+  isGatewayConfigured,
   isProviderConfigured,
+  shouldUseGateway,
 } from "../ai/provider-config";
 
 describe("provider config", () => {
@@ -32,5 +34,16 @@ describe("provider config", () => {
 
     expect(isProviderConfigured("openrouter")).toBe(true);
     expect(getMissingProviderConfig("openrouter/google/gemini")).toBeNull();
+  });
+
+  it("uses AI Gateway for gateway model ids when configured", () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "vck-test");
+    vi.stubEnv("OPENAI_API_KEY", "");
+
+    expect(isGatewayConfigured()).toBe(true);
+    expect(shouldUseGateway("google/gemini-3.5-flash")).toBe(true);
+    expect(shouldUseGateway("openai/gpt-5")).toBe(true);
+    expect(shouldUseGateway("openrouter/google/gemini")).toBe(false);
+    expect(getMissingProviderConfig("openai/gpt-5")).toBeNull();
   });
 });

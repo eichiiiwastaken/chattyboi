@@ -16,6 +16,9 @@ importers:
 
   .:
     dependencies:
+      '@ai-sdk/gateway':
+        specifier: 3.0.118
+        version: 3.0.118(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^3.0.64
         version: 3.0.64(zod@3.25.76)

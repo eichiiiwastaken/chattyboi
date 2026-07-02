@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const gatewayMock = vi.hoisted(() => ({
+  getAvailableModels: vi.fn(),
+}));
+
+vi.mock("@ai-sdk/gateway", () => ({
+  gateway: gatewayMock,
+}));
+
 afterEach(() => {
+  gatewayMock.getAvailableModels.mockReset();
   vi.restoreAllMocks();
+  vi.resetModules();
   vi.unstubAllEnvs();
 });
 
@@ -71,51 +81,45 @@ describe("Mock Models", () => {
 });
 
 describe("provider model discovery", () => {
-  it("fetches public OpenRouter models without an OpenRouter API key", async () => {
+  it("does not fetch OpenRouter models without an OpenRouter API key", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "");
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      json: async () => ({
-        data: [{ id: "moonshotai/kimi-k2", name: "Kimi K2" }],
-      }),
-      ok: true,
-    } as Response);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const { fetchOpenRouterModels } = await import("../ai/models");
 
-    await expect(fetchOpenRouterModels()).resolves.toEqual([
-      {
-        description: "",
-        id: "openrouter/moonshotai/kimi-k2",
-        name: "Kimi K2",
-        provider: "openrouter",
-      },
-    ]);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://openrouter.ai/api/v1/models",
-      { next: { revalidate: 86_400 } }
-    );
+    await expect(fetchOpenRouterModels()).resolves.toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("fetches public OpenCode Go models without an OpenCode API key", async () => {
+  it("does not fetch OpenCode Go models without an OpenCode API key", async () => {
     vi.stubEnv("OPENCODE_API_KEY", "");
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      json: async () => ({
-        data: [{ id: "kimi-k2.6" }],
-      }),
-      ok: true,
-    } as Response);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const { fetchOpenCodeGoModels } = await import("../ai/models");
 
-    await expect(fetchOpenCodeGoModels()).resolves.toEqual([
+    await expect(fetchOpenCodeGoModels()).resolves.toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("fetches AI Gateway models when an AI Gateway key is configured", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "vck_test");
+    gatewayMock.getAvailableModels.mockResolvedValue({
+      models: [
+        {
+          description: "Gateway Kimi",
+          id: "moonshotai/kimi-k2.6",
+          name: "Kimi K2.6",
+        },
+      ],
+    });
+    const { fetchGatewayModels } = await import("../ai/models");
+
+    await expect(fetchGatewayModels()).resolves.toEqual([
       {
-        description: "",
-        id: "opencodego/kimi-k2.6",
-        name: "kimi-k2.6",
-        provider: "opencodego",
+        description: "Gateway Kimi",
+        id: "moonshotai/kimi-k2.6",
+        name: "Kimi K2.6",
+        provider: "moonshotai",
       },
     ]);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://opencode.ai/zen/go/v1/models",
-      { next: { revalidate: 86_400 } }
-    );
+    expect(gatewayMock.getAvailableModels).toHaveBeenCalled();
   });
 });

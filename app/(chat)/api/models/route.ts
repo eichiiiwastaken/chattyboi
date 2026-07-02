@@ -1,9 +1,12 @@
+import { connection } from "next/server";
 import {
   fetchAllModelData,
   type GatewayModelWithCapabilities,
 } from "@/lib/ai/models";
 
 export async function GET() {
+  await connection();
+
   const headers = {
     "Cache-Control": "public, max-age=300, s-maxage=300",
   };

@@ -13,6 +13,7 @@ import {
   updateChatPinnedStatusById,
   updateChatVisibilityById,
 } from "@/lib/db/queries";
+import { publishChatEvent } from "@/lib/realtime/events";
 import { getTextFromMessage } from "@/lib/utils";
 
 export async function saveChatModelAsCookie(model: string) {
@@ -76,6 +77,14 @@ export async function updateChatVisibility({
   }
 
   await updateChatVisibilityById({ chatId, visibility });
+  await publishChatEvent({
+    userId: session.user.id,
+    event: {
+      type: "chat.visibility.updated",
+      chatId,
+      visibility,
+    },
+  });
 }
 
 export async function updateChatPinnedStatus({
@@ -96,4 +105,12 @@ export async function updateChatPinnedStatus({
   }
 
   await updateChatPinnedStatusById({ chatId, pinnedAt });
+  await publishChatEvent({
+    userId: session.user.id,
+    event: {
+      type: "chat.pinned.updated",
+      chatId,
+      pinnedAt: pinnedAt?.toISOString() ?? null,
+    },
+  });
 }

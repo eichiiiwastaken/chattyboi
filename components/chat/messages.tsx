@@ -1,10 +1,12 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
-import { ArrowDownIcon } from "lucide-react";
+import { AlertTriangleIcon, ArrowDownIcon, RefreshCcwIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
+import type { GenerationError } from "@/hooks/use-active-chat";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { Button } from "../ui/button";
 import { useDataStream } from "./data-stream-provider";
 import { Greeting } from "./greeting";
 import { PreviewMessage, ThinkingMessage } from "./message";
@@ -21,6 +23,7 @@ type MessagesProps = {
   isArtifactVisible: boolean;
   isLoading?: boolean;
   selectedModelId: string;
+  generationError: GenerationError | null;
   onEditMessage?: (message: ChatMessage) => void;
   onQuoteSelection?: (text: string) => void;
   onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
@@ -39,6 +42,7 @@ function PureMessages({
   isArtifactVisible,
   isLoading,
   selectedModelId,
+  generationError,
   onEditMessage,
   onQuoteSelection,
   onRetryMessage,
@@ -57,6 +61,8 @@ function PureMessages({
   });
 
   useDataStream();
+
+  const retryErrorMessage = generationError ? messages.at(-1) : undefined;
 
   const prevChatIdRef = useRef(chatId);
   useEffect(() => {
@@ -112,6 +118,17 @@ function PureMessages({
             <ThinkingMessage />
           )}
 
+          {generationError && (
+            <GenerationErrorMessage
+              error={generationError}
+              onRetry={
+                retryErrorMessage && onRetryMessage
+                  ? () => onRetryMessage(retryErrorMessage)
+                  : undefined
+              }
+            />
+          )}
+
           <div
             className="min-h-[24px] min-w-[24px] shrink-0"
             ref={messagesEndRef}
@@ -131,6 +148,53 @@ function PureMessages({
       >
         <ArrowDownIcon className="size-3 text-muted-foreground" />
       </button>
+    </div>
+  );
+}
+
+function GenerationErrorMessage({
+  error,
+  onRetry,
+}: {
+  error: GenerationError;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      className="flex w-full justify-start"
+      data-testid="generation-error-message"
+      role="alert"
+    >
+      <div className="max-w-[min(100%,720px)] rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-950 shadow-[var(--shadow-card)] dark:border-red-900/70 dark:bg-red-950/35 dark:text-red-100">
+        <div className="flex items-start gap-3">
+          <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-300" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-[13px] leading-5">
+              The assistant response failed.
+            </p>
+            <p className="mt-1 break-words text-[13px] leading-5 text-red-900/80 dark:text-red-100/80">
+              {error.message}
+            </p>
+            {error.detail && (
+              <p className="mt-1 break-words text-[12px] leading-5 text-red-900/70 dark:text-red-100/65">
+                {error.detail}
+              </p>
+            )}
+          </div>
+          {onRetry && (
+            <Button
+              className="h-8 shrink-0 border-red-300 text-red-950 hover:bg-red-100 dark:border-red-800 dark:text-red-100 dark:hover:bg-red-900/50"
+              onClick={onRetry}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <RefreshCcwIcon className="size-3.5" />
+              Retry
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { deleteTrailingMessages } from "@/app/(chat)/actions";
 import {
   AlertDialog,
@@ -23,6 +22,7 @@ import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Artifact } from "./artifact";
 import { ChatHeader } from "./chat-header";
+import { ChatRealtimeEvents } from "./chat-realtime-events";
 import { DataStreamHandler } from "./data-stream-handler";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
@@ -57,6 +57,9 @@ export function ChatShell() {
     webSearchEnabled,
     searchSources,
     setSearchSources,
+    generationError,
+    clearGenerationError,
+    setGenerationErrorFromUnknown,
     settings,
     isOneTimeChat,
     isNewChat,
@@ -114,6 +117,8 @@ export function ChatShell() {
       const retryModelId = modelId ?? currentModelId;
 
       try {
+        clearGenerationError();
+
         if (modelId) {
           setCurrentModelId(modelId);
           setCookie("chat-model", modelId);
@@ -135,14 +140,16 @@ export function ChatShell() {
         });
       } catch (error) {
         console.error("[retry] Failed to retry message:", error);
-        toast.error("Failed to retry message");
+        setGenerationErrorFromUnknown(error);
       }
     },
     [
+      clearGenerationError,
       currentModelId,
       regenerate,
       setCurrentModelId,
       setSearchSources,
+      setGenerationErrorFromUnknown,
       webSearchEnabled,
       isOneTimeChat,
     ]
@@ -170,6 +177,7 @@ export function ChatShell() {
             <Messages
               addToolApprovalResponse={addToolApprovalResponse}
               chatId={chatId}
+              generationError={generationError}
               isArtifactVisible={isArtifactVisible}
               isLoading={isLoading}
               isReadonly={isReadonly}
@@ -257,6 +265,7 @@ export function ChatShell() {
         />
       </div>
 
+      <ChatRealtimeEvents />
       <DataStreamHandler />
 
       <AlertDialog

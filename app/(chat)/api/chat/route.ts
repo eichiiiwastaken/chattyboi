@@ -9,8 +9,6 @@ import {
   streamText,
 } from "ai";
 import { checkBotId } from "botid/server";
-import { after } from "next/server";
-import { createResumableStreamContext } from "resumable-stream";
 import sharp from "sharp";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
@@ -39,6 +37,8 @@ import {
 import type { DBMessage } from "@/lib/db/schema";
 import { ChatbotError } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
+import { publishChatEvent } from "@/lib/realtime/events";
+import { getResumableStreamContext } from "@/lib/streams/resumable";
 import type { ChatMessage } from "@/lib/types";
 import {
   getUploadPath,
@@ -50,16 +50,6 @@ import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
 export const maxDuration = 60;
-
-function getStreamContext() {
-  try {
-    return createResumableStreamContext({ waitUntil: after });
-  } catch (_) {
-    return null;
-  }
-}
-
-export { getStreamContext };
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -130,6 +120,15 @@ export async function POST(request: Request) {
         title: "New chat",
         visibility: selectedVisibilityType,
       });
+      await publishChatEvent({
+        userId: session.user.id,
+        event: {
+          type: "chat.created",
+          chatId: id,
+          title: "New chat",
+          createdAt: new Date().toISOString(),
+        },
+      });
       titlePromise = generateTitleFromUserMessage({ message });
     }
 
@@ -183,6 +182,7 @@ export async function POST(request: Request) {
     };
 
     if (!isOneTimeChat && message?.role === "user") {
+      const createdAt = new Date();
       await saveMessages({
         messages: [
           {
@@ -191,10 +191,20 @@ export async function POST(request: Request) {
             role: "user",
             parts: message.parts,
             attachments: [],
-            createdAt: new Date(),
+            createdAt,
             metadata: null,
           },
         ],
+      });
+      await publishChatEvent({
+        userId: session.user.id,
+        event: {
+          type: "message.created",
+          chatId: id,
+          messageId: message.id,
+          role: "user",
+          createdAt: createdAt.toISOString(),
+        },
       });
     }
 
@@ -321,7 +331,15 @@ export async function POST(request: Request) {
         if (titlePromise) {
           const title = await titlePromise;
           dataStream.write({ type: "data-chat-title", data: title });
-          updateChatTitleById({ chatId: id, title });
+          await updateChatTitleById({ chatId: id, title });
+          await publishChatEvent({
+            userId: session.user.id,
+            event: {
+              type: "chat.title.updated",
+              chatId: id,
+              title,
+            },
+          });
         }
       },
       generateId: generateUUID,
@@ -356,17 +374,32 @@ export async function POST(request: Request) {
             }
           }
         } else if (finishedMessages.length > 0) {
+          const createdAt = new Date();
           await saveMessages({
             messages: finishedMessages.map((currentMessage) => ({
               id: currentMessage.id,
               role: currentMessage.role,
               parts: currentMessage.parts,
-              createdAt: new Date(),
+              createdAt,
               attachments: [],
               chatId: id,
               metadata: currentMessage.metadata as DBMessage["metadata"],
             })),
           });
+          for (const finishedMessage of finishedMessages) {
+            if (finishedMessage.role !== "user") {
+              await publishChatEvent({
+                userId: session.user.id,
+                event: {
+                  type: "message.created",
+                  chatId: id,
+                  messageId: finishedMessage.id,
+                  role: finishedMessage.role,
+                  createdAt: createdAt.toISOString(),
+                },
+              });
+            }
+          }
         }
       },
       onError: (error) => {
@@ -389,10 +422,18 @@ export async function POST(request: Request) {
           return;
         }
         try {
-          const streamContext = getStreamContext();
+          const streamContext = getResumableStreamContext();
           if (streamContext) {
             const streamId = generateUUID();
             await createStreamId({ streamId, chatId: id });
+            await publishChatEvent({
+              userId: session.user.id,
+              event: {
+                type: "chat.stream.created",
+                chatId: id,
+                streamId,
+              },
+            });
             await streamContext.createNewResumableStream(
               streamId,
               () => sseStream
@@ -445,6 +486,13 @@ export async function DELETE(request: Request) {
   }
 
   const deletedChat = await deleteChatById({ id });
+  await publishChatEvent({
+    userId: session.user.id,
+    event: {
+      type: "chat.deleted",
+      chatId: id,
+    },
+  });
 
   return Response.json(deletedChat, { status: 200 });
 }

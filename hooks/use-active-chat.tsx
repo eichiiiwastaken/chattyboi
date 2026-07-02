@@ -9,6 +9,7 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -19,7 +20,6 @@ import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { useDataStream } from "@/components/chat/data-stream-provider";
 import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
-import { toast } from "@/components/chat/toast";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
@@ -33,6 +33,11 @@ type SearchSource = {
   url: string;
 };
 
+export type GenerationError = {
+  message: string;
+  detail?: string;
+};
+
 type ActiveChatContextValue = {
   chatId: string;
   messages: ChatMessage[];
@@ -41,6 +46,7 @@ type ActiveChatContextValue = {
   status: UseChatHelpers<ChatMessage>["status"];
   stop: UseChatHelpers<ChatMessage>["stop"];
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
+  resumeStream: UseChatHelpers<ChatMessage>["resumeStream"];
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
@@ -56,6 +62,9 @@ type ActiveChatContextValue = {
   setWebSearchEnabled: (enabled: boolean) => void;
   searchSources: SearchSource[] | null;
   setSearchSources: (sources: SearchSource[] | null) => void;
+  generationError: GenerationError | null;
+  clearGenerationError: () => void;
+  setGenerationErrorFromUnknown: (error: unknown) => void;
   settings: Settings | null;
   isOneTimeChat: boolean;
   isNewChat: boolean;
@@ -66,6 +75,10 @@ const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
 function extractChatId(pathname: string): string | null {
   const match = pathname.match(/\/chat\/([^/]+)/);
   return match ? match[1] : null;
+}
+
+export function getChatMessagesKey(chatId: string) {
+  return `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/messages?chatId=${chatId}`;
 }
 
 export function ActiveChatProvider({ children }: { children: ReactNode }) {
@@ -101,11 +114,34 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const [searchSources, setSearchSources] = useState<SearchSource[] | null>(
     null
   );
+  const [generationError, setGenerationError] =
+    useState<GenerationError | null>(null);
+  const clearGenerationError = useCallback(() => {
+    setGenerationError(null);
+  }, []);
+  const setGenerationErrorFromUnknown = useCallback((error: unknown) => {
+    if (error instanceof ChatbotError) {
+      setGenerationError({
+        message: error.message,
+        detail: error.cause ? String(error.cause) : undefined,
+      });
+      return;
+    }
+
+    if (error instanceof Error) {
+      setGenerationError({
+        message: error.message || "The assistant response failed.",
+      });
+      return;
+    }
+
+    setGenerationError({
+      message: "The assistant response failed.",
+    });
+  }, []);
 
   const { data: chatData, isLoading } = useSWR(
-    isNewChat
-      ? null
-      : `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/messages?chatId=${chatId}`,
+    isNewChat ? null : getChatMessagesKey(chatId),
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -198,23 +234,44 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setDataStream((ds) => (ds ? [...ds, dataPart] : []));
     },
     onFinish: () => {
+      clearGenerationError();
       if (!isOneTimeChat) {
         mutate(unstable_serialize(getChatHistoryPaginationKey));
       }
     },
     onError: (error) => {
       if (error.message?.includes("AI Gateway requires a valid credit card")) {
+        setGenerationErrorFromUnknown(error);
         setShowCreditCardAlert(true);
       } else if (error instanceof ChatbotError) {
-        toast({ type: "error", description: error.message });
+        setGenerationErrorFromUnknown(error);
       } else {
-        toast({
-          type: "error",
-          description: error.message || "Oops, an error occurred!",
-        });
+        setGenerationErrorFromUnknown(
+          error.message ? error : new Error("Oops, an error occurred!")
+        );
       }
     },
   });
+
+  const sendMessageWithErrorReset = useCallback<
+    UseChatHelpers<ChatMessage>["sendMessage"]
+  >(
+    (...args) => {
+      clearGenerationError();
+      return sendMessage(...args);
+    },
+    [clearGenerationError, sendMessage]
+  );
+
+  const regenerateWithErrorReset = useCallback<
+    UseChatHelpers<ChatMessage>["regenerate"]
+  >(
+    (...args) => {
+      clearGenerationError();
+      return regenerate(...args);
+    },
+    [clearGenerationError, regenerate]
+  );
 
   const loadedChatIds = useRef(new Set<string>());
 
@@ -239,8 +296,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       if (isNewChat) {
         setMessages([]);
       }
+      clearGenerationError();
     }
-  }, [chatId, isNewChat, setMessages]);
+  }, [chatId, clearGenerationError, isNewChat, setMessages]);
 
   useEffect(() => {
     if (chatData && !isNewChat) {
@@ -286,7 +344,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       );
 
       const send = () => {
-        sendMessage(
+        sendMessageWithErrorReset(
           {
             role: "user" as const,
             parts: [{ type: "text", text: query }],
@@ -298,7 +356,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       send();
     }
   }, [
-    sendMessage,
+    sendMessageWithErrorReset,
     chatId,
     router,
     isOneTimeChat,
@@ -329,10 +387,11 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       chatId,
       messages,
       setMessages,
-      sendMessage,
+      sendMessage: sendMessageWithErrorReset,
       status,
       stop,
-      regenerate,
+      regenerate: regenerateWithErrorReset,
+      resumeStream,
       addToolApprovalResponse,
       input,
       setInput,
@@ -348,6 +407,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setWebSearchEnabled,
       searchSources,
       setSearchSources,
+      generationError,
+      clearGenerationError,
+      setGenerationErrorFromUnknown,
       settings,
       isOneTimeChat,
       isNewChat,
@@ -356,10 +418,11 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       chatId,
       messages,
       setMessages,
-      sendMessage,
+      sendMessageWithErrorReset,
       status,
       stop,
-      regenerate,
+      regenerateWithErrorReset,
+      resumeStream,
       addToolApprovalResponse,
       input,
       visibility,
@@ -371,6 +434,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       showCreditCardAlert,
       webSearchEnabled,
       searchSources,
+      generationError,
+      clearGenerationError,
+      setGenerationErrorFromUnknown,
       settings,
       isOneTimeChat,
     ]

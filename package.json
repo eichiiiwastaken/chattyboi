@@ -8,6 +8,7 @@
     "start": "next start",
     "check": "ultracite check",
     "fix": "ultracite fix",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx lib/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
@@ -89,6 +90,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.11",
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.1.13",
     "@tailwindcss/typography": "^0.5.15",
     "@types/bcryptjs": "^2.4.6",

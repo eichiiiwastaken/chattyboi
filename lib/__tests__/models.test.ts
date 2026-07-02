@@ -71,21 +71,51 @@ describe("Mock Models", () => {
 });
 
 describe("provider model discovery", () => {
-  it("does not fetch OpenRouter models without an OpenRouter API key", async () => {
+  it("fetches public OpenRouter models without an OpenRouter API key", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "");
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({
+        data: [{ id: "moonshotai/kimi-k2", name: "Kimi K2" }],
+      }),
+      ok: true,
+    } as Response);
     const { fetchOpenRouterModels } = await import("../ai/models");
 
-    await expect(fetchOpenRouterModels()).resolves.toEqual([]);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    await expect(fetchOpenRouterModels()).resolves.toEqual([
+      {
+        description: "",
+        id: "openrouter/moonshotai/kimi-k2",
+        name: "Kimi K2",
+        provider: "openrouter",
+      },
+    ]);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/models",
+      { next: { revalidate: 86_400 } }
+    );
   });
 
-  it("does not fetch OpenCode Go models without an OpenCode API key", async () => {
+  it("fetches public OpenCode Go models without an OpenCode API key", async () => {
     vi.stubEnv("OPENCODE_API_KEY", "");
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({
+        data: [{ id: "kimi-k2.6" }],
+      }),
+      ok: true,
+    } as Response);
     const { fetchOpenCodeGoModels } = await import("../ai/models");
 
-    await expect(fetchOpenCodeGoModels()).resolves.toEqual([]);
-    expect(fetchSpy).not.toHaveBeenCalled();
+    await expect(fetchOpenCodeGoModels()).resolves.toEqual([
+      {
+        description: "",
+        id: "opencodego/kimi-k2.6",
+        name: "kimi-k2.6",
+        provider: "opencodego",
+      },
+    ]);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://opencode.ai/zen/go/v1/models",
+      { next: { revalidate: 86_400 } }
+    );
   });
 });

@@ -55,6 +55,7 @@ export const PreviewAttachment = ({
     label === "Image" ||
     previewUrl.startsWith("data:image/");
   const shouldShowImage = isImage && !imageFailed;
+  const canOpen = previewUrl.length > 0 && !isUploading;
 
   return (
     <div
@@ -93,9 +94,21 @@ export const PreviewAttachment = ({
         </div>
       )}
 
+      {canOpen && (
+        <a
+          aria-label={`Open ${name ?? label}`}
+          className="absolute inset-0 z-20 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          href={previewUrl}
+          rel="noreferrer"
+          target="_blank"
+        >
+          <span className="sr-only">Open {name ?? label}</span>
+        </a>
+      )}
+
       {isUploading && (
         <div
-          className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40 backdrop-blur-sm"
+          className="absolute inset-0 z-30 flex items-center justify-center rounded-lg bg-black/40 backdrop-blur-sm"
           data-testid="input-attachment-loader"
         >
           <Spinner className="size-5" />
@@ -104,14 +117,14 @@ export const PreviewAttachment = ({
 
       {onRemove && !isUploading && (
         <>
-          <div className="absolute inset-x-0 bottom-0 flex items-end justify-center bg-gradient-to-t from-black/70 via-black/40 to-transparent p-2 pb-6 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-center bg-gradient-to-t from-black/70 via-black/40 to-transparent p-2 pb-6 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <span className="line-clamp-2 text-[10px] font-medium text-white">
               {name ?? "attachment"}
             </span>
           </div>
           <button
             aria-label={`Remove ${name ?? "attachment"}`}
-            className="absolute top-1.5 right-1.5 flex size-6 items-center justify-center rounded-full bg-black/70 text-white opacity-100 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-black/90 active:scale-95"
+            className="absolute top-1.5 right-1.5 z-30 flex size-6 items-center justify-center rounded-full bg-black/70 text-white opacity-100 shadow-sm transition-all duration-200 hover:scale-110 hover:bg-black/90 active:scale-95"
             onClick={onRemove}
             type="button"
           >

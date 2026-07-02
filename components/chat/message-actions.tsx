@@ -28,6 +28,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { MODELS_API_PATH } from "@/lib/ai/model-api";
 import type { ChatModel, ModelCapabilities } from "@/lib/ai/models";
 import type { ChatMessage } from "@/lib/types";
 import {
@@ -139,9 +140,9 @@ function RetryMenu({
 }) {
   const [open, setOpen] = useState(false);
   const { data: modelsData } = useSWR(
-    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 3_600_000 }
+    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${MODELS_API_PATH}`,
+    (url: string) => fetch(url, { cache: "no-store" }).then((r) => r.json()),
+    { revalidateOnFocus: false }
   );
 
   const capabilities: Record<string, ModelCapabilities> | undefined =

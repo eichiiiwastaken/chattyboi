@@ -122,4 +122,25 @@ describe("provider model discovery", () => {
     ]);
     expect(gatewayMock.getAvailableModels).toHaveBeenCalled();
   });
+
+  it("falls back to public OpenRouter catalog with Gateway ids when Gateway metadata fails", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "vck_test");
+    gatewayMock.getAvailableModels.mockRejectedValue(new Error("gateway down"));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({
+        data: [{ id: "google/gemini-3.5-flash", name: "Gemini 3.5 Flash" }],
+      }),
+      ok: true,
+    } as Response);
+    const { fetchGatewayModels } = await import("../ai/models");
+
+    await expect(fetchGatewayModels()).resolves.toEqual([
+      {
+        description: "",
+        id: "google/gemini-3.5-flash",
+        name: "Gemini 3.5 Flash",
+        provider: "google",
+      },
+    ]);
+  });
 });

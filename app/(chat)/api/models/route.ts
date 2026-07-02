@@ -8,7 +8,7 @@ export async function GET() {
   await connection();
 
   const headers = {
-    "Cache-Control": "public, max-age=300, s-maxage=300",
+    "Cache-Control": "no-store, max-age=0",
   };
 
   const { allModels, capabilities } = await fetchAllModelData();

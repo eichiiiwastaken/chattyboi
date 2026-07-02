@@ -88,7 +88,7 @@ export async function fetchGatewayModels(): Promise<ChatModel[]> {
       description: model.description ?? "",
     }));
   } catch {
-    return [];
+    return fetchPublicOpenRouterModels({ gatewayIds: true });
   }
 }
 
@@ -151,6 +151,14 @@ export async function fetchOpenRouterModels(): Promise<ChatModel[]> {
     return [];
   }
 
+  return await fetchPublicOpenRouterModels({ gatewayIds: false });
+}
+
+async function fetchPublicOpenRouterModels({
+  gatewayIds,
+}: {
+  gatewayIds: boolean;
+}): Promise<ChatModel[]> {
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       next: { revalidate: 86_400 },
@@ -160,9 +168,9 @@ export async function fetchOpenRouterModels(): Promise<ChatModel[]> {
     }
     const json = await res.json();
     return (json.data ?? []).map((m: { id: string; name?: string }) => ({
-      id: `openrouter/${m.id}`,
+      id: gatewayIds ? m.id : `openrouter/${m.id}`,
       name: m.name || m.id,
-      provider: "openrouter",
+      provider: gatewayIds ? (m.id.split("/")[0] ?? "gateway") : "openrouter",
       description: "",
     }));
   } catch {

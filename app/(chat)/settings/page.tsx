@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { MODELS_API_PATH } from "@/lib/ai/model-api";
 import type { ChatModel } from "@/lib/ai/models";
 
 function ModelSelectorCompact({
@@ -31,9 +32,9 @@ function ModelSelectorCompact({
 }) {
   const [open, setOpen] = useState(false);
   const { data: modelsData } = useSWR(
-    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/models`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { revalidateOnFocus: false, dedupingInterval: 3_600_000 }
+    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${MODELS_API_PATH}`,
+    (url: string) => fetch(url, { cache: "no-store" }).then((r) => r.json()),
+    { revalidateOnFocus: false }
   );
 
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;

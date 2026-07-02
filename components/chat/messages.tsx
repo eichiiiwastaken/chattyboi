@@ -9,7 +9,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import { useDataStream } from "./data-stream-provider";
 import { Greeting } from "./greeting";
-import { PreviewMessage, ThinkingMessage } from "./message";
+import {
+  getMessageRenderSignature,
+  PreviewMessage,
+  ThinkingMessage,
+} from "./message";
 
 type MessagesProps = {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
@@ -102,6 +106,7 @@ function PureMessages({
               isReadonly={isReadonly}
               key={message.id}
               message={message}
+              messageSignature={getMessageRenderSignature(message)}
               onEdit={onEditMessage}
               onQuoteSelection={onQuoteSelection}
               onRetryMessage={onRetryMessage}

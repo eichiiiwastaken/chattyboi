@@ -150,6 +150,18 @@ export function ChatShell() {
     ]
   );
 
+  const handleEditMessage = useCallback(
+    (msg: ChatMessage) => {
+      const text = msg.parts
+        ?.filter((p) => p.type === "text")
+        .map((p) => p.text)
+        .join("");
+      setInput(text ?? "");
+      setEditingMessage(msg);
+    },
+    [setInput]
+  );
+
   return (
     <>
       <div className="flex h-dvh w-full flex-row overflow-hidden">
@@ -177,14 +189,7 @@ export function ChatShell() {
               isLoading={isLoading}
               isReadonly={isReadonly}
               messages={messages}
-              onEditMessage={(msg) => {
-                const text = msg.parts
-                  ?.filter((p) => p.type === "text")
-                  .map((p) => p.text)
-                  .join("");
-                setInput(text ?? "");
-                setEditingMessage(msg);
-              }}
+              onEditMessage={handleEditMessage}
               onQuoteSelection={handleQuoteSelection}
               onRetryMessage={handleRetryMessage}
               regenerate={regenerate}

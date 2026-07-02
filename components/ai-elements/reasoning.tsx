@@ -20,7 +20,6 @@ import {
   useState,
 } from "react";
 
-import { MemoizedMarkdown } from "./memoized-markdown";
 import { Shimmer } from "./shimmer";
 
 interface ReasoningContextValue {
@@ -50,6 +49,9 @@ export type ReasoningProps = ComponentProps<typeof Collapsible> & {
 
 const AUTO_CLOSE_DELAY = 1000;
 const MS_IN_S = 1000;
+const REASONING_INITIAL_CHARS = 16_000;
+const REASONING_INCREMENT_CHARS = 16_000;
+const REASONING_STREAMING_TAIL_CHARS = 16_000;
 
 export const Reasoning = memo(
   ({
@@ -192,11 +194,25 @@ export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => {
     const { isStreaming, isOpen } = useReasoning();
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [visibleChars, setVisibleChars] = useState(REASONING_INITIAL_CHARS);
+
+    useEffect(() => {
+      if (!isOpen) {
+        setVisibleChars(REASONING_INITIAL_CHARS);
+      }
+    }, [children, isOpen]);
+
+    const visibleText =
+      isStreaming && children.length > REASONING_STREAMING_TAIL_CHARS
+        ? children.slice(-REASONING_STREAMING_TAIL_CHARS)
+        : children.slice(0, visibleChars);
+    const hasMore = !isStreaming && visibleChars < children.length;
+
     useEffect(() => {
       if (isStreaming && scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
-    }, [children, isStreaming]);
+    }, [isStreaming, visibleText]);
 
     if (!isOpen) return null;
 
@@ -212,13 +228,22 @@ export const ReasoningContent = memo(
           ref={scrollRef}
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          <MemoizedMarkdown
-            className="prose dark:prose-invert prose-neutral max-w-none"
-            id={children.slice(0, 64)}
-            {...props}
-          >
-            {children}
-          </MemoizedMarkdown>
+          <div className="whitespace-pre-wrap break-words" {...props}>
+            {visibleText}
+          </div>
+          {hasMore && (
+            <button
+              className="mt-2 rounded-md border border-border/40 px-2 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
+              onClick={() =>
+                setVisibleChars(
+                  (current) => current + REASONING_INCREMENT_CHARS
+                )
+              }
+              type="button"
+            >
+              Show more
+            </button>
+          )}
         </div>
       </div>
     );

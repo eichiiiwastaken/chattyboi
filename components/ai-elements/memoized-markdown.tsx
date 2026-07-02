@@ -4,7 +4,7 @@ import type { ComponentProps, HTMLAttributes } from "react";
 import type { BundledLanguage } from "shiki";
 
 import { cn } from "@/lib/utils";
-import { memo, useMemo, useState } from "react";
+import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -22,25 +22,66 @@ import {
 type MemoizedMarkdownProps = HTMLAttributes<HTMLDivElement> & {
   children: string | null | undefined;
   id: string;
+  isStreaming?: boolean;
+  maxInitialChars?: number;
+  maxIncrementChars?: number;
   components?: ComponentProps<typeof ReactMarkdown>["components"];
   remarkPlugins?: ComponentProps<typeof ReactMarkdown>["remarkPlugins"];
   rehypePlugins?: ComponentProps<typeof ReactMarkdown>["rehypePlugins"];
 };
 
+const DEFAULT_INITIAL_CHARS = 32_000;
+const DEFAULT_INCREMENT_CHARS = 32_000;
+const MAX_TEXT_BLOCK_CHARS = 6000;
+
 export const MemoizedMarkdown = memo(
-  ({ children, className, id, ...props }: MemoizedMarkdownProps) => {
+  ({
+    children,
+    className,
+    id,
+    isStreaming = false,
+    maxInitialChars = DEFAULT_INITIAL_CHARS,
+    maxIncrementChars = DEFAULT_INCREMENT_CHARS,
+    ...props
+  }: MemoizedMarkdownProps) => {
     const content = children ?? "";
-    const blocks = useMemo(() => parseMarkdownIntoBlocks(content), [content]);
+    const deferredContent = useDeferredValue(content);
+    const renderContent = isStreaming ? deferredContent : content;
+    const blocks = useMemo(
+      () => parseMarkdownIntoBlocks(renderContent),
+      [renderContent]
+    );
+    const [visibleChars, setVisibleChars] = useState(maxInitialChars);
+
+    useEffect(() => {
+      setVisibleChars(maxInitialChars);
+    }, [id, maxInitialChars]);
+
+    const { hasMore, renderedBlocks } = useMemo(
+      () => getVisibleBlocks(blocks, visibleChars),
+      [blocks, visibleChars]
+    );
 
     return (
       <div className={className}>
-        {blocks.map((block, index) => (
+        {renderedBlocks.map((block, index) => (
           <MemoizedMarkdownBlock
             {...props}
             content={block}
             key={`${id}-block-${index}`}
           />
         ))}
+        {hasMore && (
+          <button
+            className="mt-2 rounded-md border border-border/40 px-2 py-1 text-muted-foreground text-xs transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() =>
+              setVisibleChars((current) => current + maxIncrementChars)
+            }
+            type="button"
+          >
+            Show more
+          </button>
+        )}
       </div>
     );
   }
@@ -138,6 +179,62 @@ const MemoizedMarkdownBlock = memo(
 
 MemoizedMarkdownBlock.displayName = "MemoizedMarkdownBlock";
 
+function getVisibleBlocks(blocks: string[], visibleChars: number) {
+  const renderedBlocks: string[] = [];
+  let renderedChars = 0;
+
+  for (const block of blocks) {
+    const nextRenderedChars = renderedChars + block.length;
+
+    if (renderedBlocks.length > 0 && nextRenderedChars > visibleChars) {
+      return { hasMore: true, renderedBlocks };
+    }
+
+    renderedBlocks.push(block);
+    renderedChars = nextRenderedChars;
+  }
+
+  return { hasMore: false, renderedBlocks };
+}
+
+function pushTextBlocks(blocks: string[], text: string) {
+  if (!text) {
+    return;
+  }
+
+  if (text.length <= MAX_TEXT_BLOCK_CHARS) {
+    blocks.push(text);
+    return;
+  }
+
+  const paragraphs = text.split(/(\n{2,})/);
+  let current = "";
+
+  for (const paragraph of paragraphs) {
+    if (current && current.length + paragraph.length > MAX_TEXT_BLOCK_CHARS) {
+      blocks.push(current);
+      current = "";
+    }
+
+    if (paragraph.length > MAX_TEXT_BLOCK_CHARS) {
+      for (
+        let index = 0;
+        index < paragraph.length;
+        index += MAX_TEXT_BLOCK_CHARS
+      ) {
+        blocks.push(paragraph.slice(index, index + MAX_TEXT_BLOCK_CHARS));
+      }
+      continue;
+    }
+
+    current += paragraph;
+  }
+
+  if (current) {
+    blocks.push(current);
+  }
+}
+
 function parseMarkdownIntoBlocks(markdown: string): string[] {
   const blocks: string[] = [];
   let current = "";
@@ -150,7 +247,7 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
 
     if (!inCodeBlock && /^```/.test(line)) {
       if (current) {
-        blocks.push(current);
+        pushTextBlocks(blocks, current);
         current = "";
       }
       inCodeBlock = true;
@@ -166,7 +263,7 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
       /^#{1,6}\s/.test(line)
     ) {
       if (current) {
-        blocks.push(current);
+        pushTextBlocks(blocks, current);
         current = "";
       }
       blocks.push(line);
@@ -175,7 +272,7 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
       /^---/.test(line)
     ) {
       if (current) {
-        blocks.push(current);
+        pushTextBlocks(blocks, current);
         current = "";
       }
       blocks.push(line);
@@ -185,7 +282,7 @@ function parseMarkdownIntoBlocks(markdown: string): string[] {
   }
 
   if (current) {
-    blocks.push(current);
+    pushTextBlocks(blocks, current);
   }
 
   return blocks.length > 0 ? blocks : [markdown];

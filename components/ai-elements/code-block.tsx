@@ -131,6 +131,15 @@ const tokensCache = new Map<string, TokenizedCode>();
 
 // Subscribers for async token updates
 const subscribers = new Map<string, Set<(result: TokenizedCode) => void>>();
+const LARGE_CODE_CHAR_LIMIT = 50_000;
+const LARGE_CODE_LINE_LIMIT = 1500;
+
+function isLargeCodeBlock(code: string) {
+  return (
+    code.length > LARGE_CODE_CHAR_LIMIT ||
+    code.split("\n", LARGE_CODE_LINE_LIMIT + 1).length > LARGE_CODE_LINE_LIMIT
+  );
+}
 
 const getTokensCacheKey = (code: string, language: BundledLanguage) => {
   const start = code.slice(0, 100);
@@ -428,16 +437,27 @@ export const CodeBlock = ({
 }: CodeBlockProps) => {
   const safeCode = code ?? "";
   const contextValue = useMemo(() => ({ code: safeCode }), [safeCode]);
+  const isLargeCode = isLargeCodeBlock(safeCode);
 
   return (
     <CodeBlockContext.Provider value={contextValue}>
       <CodeBlockContainer className={className} language={language} {...props}>
         {children}
-        <CodeBlockContent
-          code={safeCode}
-          language={language}
-          showLineNumbers={showLineNumbers}
-        />
+        {isLargeCode ? (
+          <div className="relative overflow-auto">
+            <pre className="m-0 p-4 text-sm">
+              <code className="whitespace-pre font-mono text-sm">
+                {safeCode}
+              </code>
+            </pre>
+          </div>
+        ) : (
+          <CodeBlockContent
+            code={safeCode}
+            language={language}
+            showLineNumbers={showLineNumbers}
+          />
+        )}
       </CodeBlockContainer>
     </CodeBlockContext.Provider>
   );

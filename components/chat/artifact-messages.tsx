@@ -5,7 +5,11 @@ import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import type { UIArtifact } from "./artifact";
-import { PreviewMessage, ThinkingMessage } from "./message";
+import {
+  getMessageRenderSignature,
+  PreviewMessage,
+  ThinkingMessage,
+} from "./message";
 
 type ArtifactMessagesProps = {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
@@ -60,6 +64,7 @@ function PureArtifactMessages({
           isReadonly={isReadonly}
           key={message.id}
           message={message}
+          messageSignature={getMessageRenderSignature(message)}
           regenerate={regenerate}
           requiresScrollPadding={
             hasSentMessage && index === messages.length - 1

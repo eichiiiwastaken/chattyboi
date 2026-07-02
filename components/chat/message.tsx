@@ -2,7 +2,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { QuoteIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
 import { MessageContent, MessageResponse } from "../ai-elements/message";
@@ -53,6 +53,43 @@ type TextPosition = {
 };
 
 const QUOTE_ACTION_HALF_SIZE = 18;
+
+function getValueSizeHint(value: unknown): number {
+  if (typeof value === "string") {
+    return value.length;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.keys(value).length;
+  }
+
+  return value == null ? 0 : 1;
+}
+
+export function getMessageRenderSignature(message: ChatMessage) {
+  return message.parts
+    .map((part) => {
+      if (part.type === "text") {
+        return `text:${part.text.length}:${part.text.slice(0, 32)}:${part.text.slice(-32)}`;
+      }
+
+      if (part.type === "reasoning" && "text" in part) {
+        return `reasoning:${part.text.length}:${part.text.slice(0, 32)}:${part.text.slice(-32)}`;
+      }
+
+      const state = "state" in part ? String(part.state) : "";
+      const toolCallId = "toolCallId" in part ? String(part.toolCallId) : "";
+      const inputLength = "input" in part ? getValueSizeHint(part.input) : 0;
+      const outputLength = "output" in part ? getValueSizeHint(part.output) : 0;
+
+      return `${part.type}:${state}:${toolCallId}:${inputLength}:${outputLength}`;
+    })
+    .join("|");
+}
 
 function isUsableRect(rect: DOMRect) {
   return rect.width > 0 || rect.height > 0;
@@ -427,21 +464,27 @@ function QuoteSelectionPopover({
     }
 
     const activeSelection = window.getSelection();
-    const selectedText = activeSelection?.toString().trim();
+    const root = rootRef.current;
 
-    if (!(activeSelection && selectedText && activeSelection.rangeCount > 0)) {
+    if (!(activeSelection && root && activeSelection.rangeCount > 0)) {
       hideSelection();
       return;
     }
 
     const range = activeSelection.getRangeAt(0);
-    const root = rootRef.current;
     const ancestor =
       range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
         ? range.commonAncestorContainer
         : range.commonAncestorContainer.parentNode;
 
-    if (!(root && ancestor && root.contains(ancestor))) {
+    if (!(ancestor && root.contains(ancestor))) {
+      hideSelection();
+      return;
+    }
+
+    const selectedText = activeSelection.toString().trim();
+
+    if (!selectedText) {
       hideSelection();
       return;
     }
@@ -618,10 +661,12 @@ const PurePreviewMessage = ({
   onRetryMessage,
   searchSources,
   statsForNerds,
+  messageSignature: _messageSignature,
 }: {
   addToolApprovalResponse: UseChatHelpers<ChatMessage>["addToolApprovalResponse"];
   chatId: string;
   message: ChatMessage;
+  messageSignature?: string;
   isLoading: boolean;
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
@@ -713,7 +758,9 @@ const PurePreviewMessage = ({
           data-testid="message-content"
           key={key}
         >
-          <MessageResponse>{sanitizeText(part.text)}</MessageResponse>
+          <MessageResponse isStreaming={isLoading}>
+            {sanitizeText(part.text)}
+          </MessageResponse>
         </MessageContent>
       );
     }
@@ -994,7 +1041,7 @@ const PurePreviewMessage = ({
   return (
     <div
       className={cn(
-        "group/message w-full",
+        "group/message w-full [contain-intrinsic-size:auto_160px] [content-visibility:auto]",
         !isAssistant && "animate-[fade-up_0.25s_cubic-bezier(0.22,1,0.36,1)]"
       )}
       data-role={message.role}
@@ -1025,7 +1072,23 @@ const PurePreviewMessage = ({
   );
 };
 
-export const PreviewMessage = PurePreviewMessage;
+export const PreviewMessage = memo(
+  PurePreviewMessage,
+  (prevProps, nextProps) =>
+    prevProps.chatId === nextProps.chatId &&
+    prevProps.message === nextProps.message &&
+    prevProps.messageSignature === nextProps.messageSignature &&
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.isReadonly === nextProps.isReadonly &&
+    prevProps.selectedModelId === nextProps.selectedModelId &&
+    prevProps.requiresScrollPadding === nextProps.requiresScrollPadding &&
+    prevProps.searchSources === nextProps.searchSources &&
+    prevProps.statsForNerds === nextProps.statsForNerds &&
+    prevProps.onEdit === nextProps.onEdit &&
+    prevProps.onQuoteSelection === nextProps.onQuoteSelection &&
+    prevProps.onRetryMessage === nextProps.onRetryMessage &&
+    prevProps.addToolApprovalResponse === nextProps.addToolApprovalResponse
+);
 
 export const ThinkingMessage = () => {
   return (

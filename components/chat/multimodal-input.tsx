@@ -36,6 +36,7 @@ import {
   type ChatModel,
   DEFAULT_CHAT_MODEL,
   type ModelCapabilities,
+  titleModel,
 } from "@/lib/ai/models";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -710,16 +711,24 @@ function PureModelSelectorCompact({
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
-  const activeModels = dynamicModels ?? [];
+  const activeModels =
+    dynamicModels && dynamicModels.length > 0 ? dynamicModels : [titleModel];
 
   const selectedModel =
     activeModels.find((m: ChatModel) => m.id === selectedModelId) ??
     activeModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
     activeModels[0];
 
-  if (!selectedModel) {
-    return null;
-  }
+  useEffect(() => {
+    if (
+      dynamicModels &&
+      dynamicModels.length > 0 &&
+      selectedModel.id !== selectedModelId
+    ) {
+      onModelChange?.(selectedModel.id);
+      setCookie("chat-model", selectedModel.id);
+    }
+  }, [dynamicModels, onModelChange, selectedModel.id, selectedModelId]);
 
   const [provider] = (selectedModel.id ?? "").split("/");
 
@@ -739,7 +748,7 @@ function PureModelSelectorCompact({
         <ModelSelectorInput placeholder="Search models..." />
         <ModelSelectorList>
           {(() => {
-            const allModels = dynamicModels ?? [];
+            const allModels = activeModels;
             const curatedIds = new Set(allModels.map((m) => m.id));
 
             const grouped: Record<

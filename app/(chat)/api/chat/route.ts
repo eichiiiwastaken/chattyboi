@@ -8,7 +8,6 @@ import {
   stepCountIs,
   streamText,
 } from "ai";
-import { checkBotId } from "botid/server";
 import sharp from "sharp";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
@@ -26,6 +25,7 @@ import { isProductionEnvironment } from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
+  deleteMessagesByChatIdAfterTimestamp,
   getChatById,
   getMessageCountByUserId,
   getMessagesByChatId,
@@ -66,16 +66,15 @@ export async function POST(request: Request) {
       id,
       message,
       messages,
+      trigger,
+      messageId,
       selectedChatModel,
       selectedVisibilityType,
       webSearchEnabled,
       isOneTimeChat,
     } = requestBody;
 
-    const [, session] = await Promise.all([
-      checkBotId().catch(() => null),
-      auth(),
-    ]);
+    const session = await auth();
 
     if (!session?.user) {
       return new ChatbotError("unauthorized:chat").toResponse();
@@ -102,10 +101,13 @@ export async function POST(request: Request) {
       return new ChatbotError("rate_limit:chat").toResponse();
     }
 
-    const isToolApprovalFlow = Boolean(messages) && !isOneTimeChat;
+    const isRegenerate = trigger === "regenerate-message";
+    const isToolApprovalFlow =
+      Boolean(messages) && !isOneTimeChat && !isRegenerate;
 
     const chat = isOneTimeChat ? null : await getChatById({ id });
     let messagesFromDb: DBMessage[] = [];
+    let regeneratedUserMessage: ChatMessage | null = null;
     let titlePromise: Promise<string> | null = null;
 
     if (chat) {
@@ -113,6 +115,36 @@ export async function POST(request: Request) {
         return new ChatbotError("forbidden:chat").toResponse();
       }
       messagesFromDb = await getMessagesByChatId({ id });
+
+      if (isRegenerate && messageId) {
+        const messageToRegenerate = messagesFromDb.find(
+          (currentMessage) => currentMessage.id === messageId
+        );
+
+        if (!messageToRegenerate) {
+          return new ChatbotError("bad_request:api").toResponse();
+        }
+
+        await deleteMessagesByChatIdAfterTimestamp({
+          chatId: id,
+          timestamp: messageToRegenerate.createdAt,
+        });
+
+        messagesFromDb = await getMessagesByChatId({ id });
+
+        if (messageToRegenerate.role === "user") {
+          const retryMessage =
+            messages?.find(
+              (currentMessage) => currentMessage.id === messageId
+            ) ?? (message?.id === messageId ? message : undefined);
+
+          if (retryMessage?.role !== "user") {
+            return new ChatbotError("bad_request:api").toResponse();
+          }
+
+          regeneratedUserMessage = retryMessage as ChatMessage;
+        }
+      }
     } else if (!isOneTimeChat && message?.role === "user") {
       await saveChat({
         id,
@@ -134,8 +166,17 @@ export async function POST(request: Request) {
 
     let uiMessages: ChatMessage[];
 
+    const regenerateUserMessage =
+      regeneratedUserMessage ??
+      (isRegenerate && message?.role === "user" ? message : null);
+
     if (isOneTimeChat) {
       uiMessages = (messages ?? (message ? [message] : [])) as ChatMessage[];
+    } else if (isRegenerate) {
+      uiMessages = [
+        ...convertToUIMessages(messagesFromDb),
+        ...(regenerateUserMessage ? [regenerateUserMessage] : []),
+      ];
     } else if (isToolApprovalFlow && messages) {
       const dbMessages = convertToUIMessages(messagesFromDb);
       const approvalStates = new Map(
@@ -181,15 +222,20 @@ export async function POST(request: Request) {
       country,
     };
 
-    if (!isOneTimeChat && message?.role === "user") {
+    const userMessageToSave =
+      !isOneTimeChat && message?.role === "user"
+        ? message
+        : regeneratedUserMessage;
+
+    if (userMessageToSave) {
       const createdAt = new Date();
       await saveMessages({
         messages: [
           {
             chatId: id,
-            id: message.id,
+            id: userMessageToSave.id,
             role: "user",
-            parts: message.parts,
+            parts: userMessageToSave.parts,
             attachments: [],
             createdAt,
             metadata: null,
@@ -201,7 +247,7 @@ export async function POST(request: Request) {
         event: {
           type: "message.created",
           chatId: id,
-          messageId: message.id,
+          messageId: userMessageToSave.id,
           role: "user",
           createdAt: createdAt.toISOString(),
         },

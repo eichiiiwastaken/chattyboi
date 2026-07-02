@@ -204,6 +204,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
         const lastMessage = request.messages.at(-1);
+        const isRegenerate = request.trigger === "regenerate-message";
+        const shouldSendMessages =
+          isRegenerate && request.messageId !== undefined;
         const isToolApprovalContinuation =
           isOneTimeChat ||
           lastMessage?.role !== "user" ||
@@ -219,9 +222,11 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
         return {
           body: {
             id: request.id,
-            ...(isToolApprovalContinuation
+            ...(isToolApprovalContinuation || shouldSendMessages
               ? { messages: request.messages }
               : { message: lastMessage }),
+            trigger: request.trigger,
+            messageId: request.messageId,
             selectedChatModel: currentModelIdRef.current,
             selectedVisibilityType: visibility,
             isOneTimeChat,

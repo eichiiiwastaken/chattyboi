@@ -32,6 +32,10 @@ export const postRequestBodySchema = z.object({
   id: z.string().uuid(),
   message: userMessageSchema.optional(),
   messages: z.array(toolApprovalMessageSchema).optional(),
+  trigger: z
+    .enum(["submit-message", "regenerate-message", "resume-stream"])
+    .optional(),
+  messageId: z.string().optional(),
   selectedChatModel: z.string(),
   selectedVisibilityType: z.enum(["public", "private"]),
   webSearchEnabled: z.boolean().optional(),

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { deleteTrailingMessages } from "@/app/(chat)/actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,9 +127,6 @@ export function ChatShell() {
           setSearchSources(null);
         }
 
-        if (!isOneTimeChat) {
-          await deleteTrailingMessages({ id: message.id });
-        }
         await regenerate({
           messageId: message.id,
           body: {
@@ -151,7 +147,6 @@ export function ChatShell() {
       setSearchSources,
       setGenerationErrorFromUnknown,
       webSearchEnabled,
-      isOneTimeChat,
     ]
   );
 

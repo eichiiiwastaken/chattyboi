@@ -71,7 +71,7 @@ export function ChatRealtimeEvents() {
       const data = await mutate<ChatMessagesResponse>(
         getChatMessagesKey(activeChatId)
       );
-      if (data?.messages) {
+      if (data?.messages && statusRef.current === "ready") {
         setMessages(data.messages);
       }
 

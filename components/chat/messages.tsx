@@ -72,6 +72,10 @@ function PureMessages({
     }
   }, [chatId, reset]);
 
+  const shouldShowThinkingMessage =
+    (status === "submitted" || status === "streaming") &&
+    messages.at(-1)?.role !== "assistant";
+
   return (
     <div className="relative flex-1 bg-background">
       {messages.length === 0 && !isLoading && (
@@ -114,9 +118,7 @@ function PureMessages({
             />
           ))}
 
-          {status === "submitted" && messages.at(-1)?.role !== "assistant" && (
-            <ThinkingMessage />
-          )}
+          {shouldShowThinkingMessage && <ThinkingMessage />}
 
           {generationError && (
             <GenerationErrorMessage

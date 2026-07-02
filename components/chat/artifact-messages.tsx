@@ -38,6 +38,15 @@ function PureArtifactMessages({
     status,
   });
 
+  const shouldShowThinkingMessage =
+    (status === "submitted" || status === "streaming") &&
+    messages.at(-1)?.role !== "assistant" &&
+    !messages.some((msg) =>
+      msg.parts?.some(
+        (part) => "state" in part && part.state === "approval-responded"
+      )
+    );
+
   return (
     <div
       className="flex h-full flex-col items-center gap-4 overflow-y-scroll px-4 pt-20"
@@ -60,12 +69,7 @@ function PureArtifactMessages({
       ))}
 
       <AnimatePresence mode="wait">
-        {status === "submitted" &&
-          !messages.some((msg) =>
-            msg.parts?.some(
-              (part) => "state" in part && part.state === "approval-responded"
-            )
-          ) && <ThinkingMessage key="thinking" />}
+        {shouldShowThinkingMessage && <ThinkingMessage key="thinking" />}
       </AnimatePresence>
 
       <motion.div

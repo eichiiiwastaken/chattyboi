@@ -96,6 +96,8 @@ export function getMessageByErrorCode(errorCode: ErrorCode): string {
 
     case "rate_limit:chat":
       return "You've reached the message limit. Come back in 1 hour to continue chatting.";
+    case "bad_request:chat":
+      return "The selected model provider is not configured. Please update your deployment environment and try again.";
     case "not_found:chat":
       return "The requested chat was not found. Please check the chat ID and try again.";
     case "forbidden:chat":

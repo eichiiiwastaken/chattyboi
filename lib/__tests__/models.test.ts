@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
 describe("Mock Models", () => {
   it("mock models produce streaming responses", async () => {
@@ -62,5 +67,25 @@ describe("Mock Models", () => {
     const result = await model.doGenerate({ prompt: "Some random topic" });
     const text = (result.content[0] as { type: string; text: string }).text;
     expect(text).toContain("mock response");
+  });
+});
+
+describe("provider model discovery", () => {
+  it("does not fetch OpenRouter models without an OpenRouter API key", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { fetchOpenRouterModels } = await import("../ai/models");
+
+    await expect(fetchOpenRouterModels()).resolves.toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch OpenCode Go models without an OpenCode API key", async () => {
+    vi.stubEnv("OPENCODE_API_KEY", "");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { fetchOpenCodeGoModels } = await import("../ai/models");
+
+    await expect(fetchOpenCodeGoModels()).resolves.toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

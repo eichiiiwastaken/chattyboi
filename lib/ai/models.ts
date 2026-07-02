@@ -1,4 +1,5 @@
 import { isTestEnvironment } from "@/lib/constants";
+import { isProviderConfigured } from "./provider-config";
 
 export const DEFAULT_CHAT_MODEL = "opencodego/kimi-k2.6";
 
@@ -59,6 +60,10 @@ export type ChatModel = {
 };
 
 export async function fetchOpenCodeGoModels(): Promise<ChatModel[]> {
+  if (!isProviderConfigured("opencodego")) {
+    return [];
+  }
+
   try {
     const res = await fetch("https://opencode.ai/zen/go/v1/models", {
       next: { revalidate: 86_400 },
@@ -109,6 +114,10 @@ function isChatModel(modelId: string): boolean {
 }
 
 export async function fetchOpenRouterModels(): Promise<ChatModel[]> {
+  if (!isProviderConfigured("openrouter")) {
+    return [];
+  }
+
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       next: { revalidate: 86_400 },
@@ -148,6 +157,10 @@ type OpenRouterRawModel = {
 };
 
 async function fetchOpenRouterRawData(): Promise<OpenRouterRawModel[]> {
+  if (!isProviderConfigured("openrouter")) {
+    return [];
+  }
+
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       next: { revalidate: 86_400 },

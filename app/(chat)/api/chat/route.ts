@@ -18,7 +18,10 @@ import {
   getCapabilities,
 } from "@/lib/ai/models";
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
-import { getMissingProviderConfig } from "@/lib/ai/provider-config";
+import {
+  getMissingProviderConfig,
+  normalizeModelIdForGateway,
+} from "@/lib/ai/provider-config";
 import { getLanguageModel } from "@/lib/ai/providers";
 import { webSearch } from "@/lib/ai/tools/web-search";
 
@@ -83,8 +86,10 @@ export async function POST(request: Request) {
 
     const allowedModelIds = await getAllowedModelIds();
     const firstAllowedModel = allowedModelIds.values().next().value;
-    const chatModel = allowedModelIds.has(selectedChatModel)
-      ? selectedChatModel
+    const normalizedSelectedChatModel =
+      normalizeModelIdForGateway(selectedChatModel);
+    const chatModel = allowedModelIds.has(normalizedSelectedChatModel)
+      ? normalizedSelectedChatModel
       : (firstAllowedModel ?? DEFAULT_CHAT_MODEL);
 
     const missingProviderConfig = getMissingProviderConfig(chatModel);

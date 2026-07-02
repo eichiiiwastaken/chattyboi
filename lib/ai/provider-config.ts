@@ -53,7 +53,21 @@ export function shouldUseGateway(modelId: string): boolean {
 
   const provider = getProviderFromModelId(modelId);
 
-  return provider !== "opencodego" && provider !== "openrouter";
+  return !provider || !isProviderConfigured(provider);
+}
+
+export function normalizeModelIdForGateway(modelId: string): string {
+  if (!shouldUseGateway(modelId)) {
+    return modelId;
+  }
+
+  const provider = getProviderFromModelId(modelId);
+
+  if (provider === "openrouter" || provider === "opencodego") {
+    return modelId.split("/").slice(1).join("/");
+  }
+
+  return modelId;
 }
 
 export function getMissingProviderConfig(modelId: string): {

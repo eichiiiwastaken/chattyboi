@@ -4,6 +4,7 @@ import {
   getProviderFromModelId,
   isGatewayConfigured,
   isProviderConfigured,
+  normalizeModelIdForGateway,
   shouldUseGateway,
 } from "../ai/provider-config";
 
@@ -43,7 +44,10 @@ describe("provider config", () => {
     expect(isGatewayConfigured()).toBe(true);
     expect(shouldUseGateway("google/gemini-3.5-flash")).toBe(true);
     expect(shouldUseGateway("openai/gpt-5")).toBe(true);
-    expect(shouldUseGateway("openrouter/google/gemini")).toBe(false);
+    expect(shouldUseGateway("openrouter/google/gemini")).toBe(true);
     expect(getMissingProviderConfig("openai/gpt-5")).toBeNull();
+    expect(normalizeModelIdForGateway("openrouter/google/gemini")).toBe(
+      "google/gemini"
+    );
   });
 });

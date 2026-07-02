@@ -4,7 +4,11 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { customProvider } from "ai";
 import { isTestEnvironment } from "../constants";
 import { GATEWAY_FALLBACK_CHAT_MODEL, titleModel } from "./models";
-import { isGatewayConfigured, shouldUseGateway } from "./provider-config";
+import {
+  getProviderFromModelId,
+  isGatewayConfigured,
+  shouldUseGateway,
+} from "./provider-config";
 
 const opencodego = createOpenAICompatible({
   baseURL: "https://opencode.ai/zen/go/v1/",
@@ -18,6 +22,17 @@ const openrouter = createOpenAI({
 });
 
 const openai = createOpenAI();
+
+function toGatewayModelId(modelId: string) {
+  const provider = getProviderFromModelId(modelId);
+
+  if (provider === "openrouter" || provider === "opencodego") {
+    const gatewayModelId = modelId.split("/").slice(1).join("/");
+    return gatewayModelId || GATEWAY_FALLBACK_CHAT_MODEL;
+  }
+
+  return modelId;
+}
 
 export const myProvider = isTestEnvironment
   ? (() => {
@@ -37,7 +52,7 @@ export function getLanguageModel(modelId: string) {
   }
 
   if (shouldUseGateway(modelId)) {
-    return gateway(modelId);
+    return gateway(toGatewayModelId(modelId));
   }
 
   const [provider, ...rest] = modelId.split("/");

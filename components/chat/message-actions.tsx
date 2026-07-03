@@ -31,6 +31,7 @@ import {
 import { MODELS_API_PATH } from "@/lib/ai/model-api";
 import type { ChatModel, ModelCapabilities } from "@/lib/ai/models";
 import type { ChatMessage } from "@/lib/types";
+import { getTextFromMessage } from "@/lib/utils";
 import {
   MessageAction as Action,
   MessageActions as Actions,
@@ -61,11 +62,7 @@ export function PureMessageActions({
     return null;
   }
 
-  const textFromParts = message.parts
-    ?.filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n")
-    .trim();
+  const textFromParts = getTextFromMessage(message).trim();
 
   const handleCopy = async () => {
     if (!textFromParts) {

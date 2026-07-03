@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckIcon, Copy } from "lucide-react";
+import { AlertTriangleIcon, CheckIcon, Copy } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -46,7 +46,18 @@ function ModelSelectorCompact({
     activeModels[0];
 
   if (!selectedModel) {
-    return null;
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-amber-950 text-[13px] dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
+        <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-300" />
+        <div className="min-w-0">
+          <p className="font-medium">No configured models</p>
+          <p className="mt-0.5 text-amber-900/75 text-[12px] leading-5 dark:text-amber-100/75">
+            Add OPENCODE_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or
+            AI_GATEWAY_API_KEY.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   const [provider] = selectedModel.id.split("/");

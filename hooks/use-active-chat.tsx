@@ -24,7 +24,7 @@ import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import type { Settings, Vote } from "@/lib/db/schema";
-import { ChatbotError } from "@/lib/errors";
+import { ChatbotError, getErrorMessageFromUnknown } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
 import { fetcher, fetchWithErrorHandlers, generateUUID } from "@/lib/utils";
 
@@ -120,23 +120,16 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     setGenerationError(null);
   }, []);
   const setGenerationErrorFromUnknown = useCallback((error: unknown) => {
-    if (error instanceof ChatbotError) {
-      setGenerationError({
-        message: error.message,
-        detail: error.cause ? String(error.cause) : undefined,
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      setGenerationError({
-        message: error.message || "The assistant response failed.",
-      });
-      return;
-    }
+    const normalized = getErrorMessageFromUnknown(
+      error,
+      "The assistant response failed."
+    );
+    const [firstLine, ...detailLines] = normalized.message.split("\n");
+    const detail = normalized.detail ?? detailLines.join("\n").trim();
 
     setGenerationError({
-      message: "The assistant response failed.",
+      detail: detail || undefined,
+      message: firstLine || "The assistant response failed.",
     });
   }, []);
 
@@ -183,6 +176,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     regenerate,
     resumeStream,
     addToolApprovalResponse,
+    error: chatError,
+    clearError: clearChatError,
   } = useChat<ChatMessage>({
     id: chatId,
     messages: initialMessages,
@@ -251,9 +246,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       } else if (error instanceof ChatbotError) {
         setGenerationErrorFromUnknown(error);
       } else {
-        setGenerationErrorFromUnknown(
-          error.message ? error : new Error("Oops, an error occurred!")
-        );
+        setGenerationErrorFromUnknown(error);
       }
     },
   });
@@ -263,9 +256,17 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   >(
     (...args) => {
       clearGenerationError();
-      return sendMessage(...args);
+      clearChatError();
+      const sendPromise = sendMessage(...args);
+      sendPromise.catch(setGenerationErrorFromUnknown);
+      return sendPromise;
     },
-    [clearGenerationError, sendMessage]
+    [
+      clearChatError,
+      clearGenerationError,
+      sendMessage,
+      setGenerationErrorFromUnknown,
+    ]
   );
 
   const regenerateWithErrorReset = useCallback<
@@ -273,10 +274,24 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   >(
     (...args) => {
       clearGenerationError();
-      return regenerate(...args);
+      clearChatError();
+      const regeneratePromise = regenerate(...args);
+      regeneratePromise.catch(setGenerationErrorFromUnknown);
+      return regeneratePromise;
     },
-    [clearGenerationError, regenerate]
+    [
+      clearChatError,
+      clearGenerationError,
+      regenerate,
+      setGenerationErrorFromUnknown,
+    ]
   );
+
+  useEffect(() => {
+    if (status === "error" && chatError) {
+      setGenerationErrorFromUnknown(chatError);
+    }
+  }, [chatError, setGenerationErrorFromUnknown, status]);
 
   const loadedChatIds = useRef(new Set<string>());
 

@@ -1,8 +1,9 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
-import { QuoteIcon } from "lucide-react";
+import { AlertTriangleIcon, QuoteIcon, RefreshCcwIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { GenerationError } from "@/hooks/use-active-chat";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
 import { MessageContent, MessageResponse } from "../ai-elements/message";
@@ -14,6 +15,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "../ai-elements/tool";
+import { Button } from "../ui/button";
 import {
   Tooltip,
   TooltipContent,
@@ -70,9 +72,28 @@ function getValueSizeHint(value: unknown): number {
   return value == null ? 0 : 1;
 }
 
+function isRuntimeErrorPart(
+  part: unknown
+): part is { errorText: string; type: "error" } {
+  return (
+    typeof part === "object" &&
+    part !== null &&
+    "type" in part &&
+    part.type === "error" &&
+    "errorText" in part &&
+    typeof part.errorText === "string"
+  );
+}
+
 export function getMessageRenderSignature(message: ChatMessage) {
   return message.parts
     .map((part) => {
+      const runtimePart: unknown = part;
+
+      if (isRuntimeErrorPart(runtimePart)) {
+        return `error:${runtimePart.errorText.length}:${runtimePart.errorText.slice(0, 32)}:${runtimePart.errorText.slice(-32)}`;
+      }
+
       if (part.type === "text") {
         return `text:${part.text.length}:${part.text.slice(0, 32)}:${part.text.slice(-32)}`;
       }
@@ -659,6 +680,7 @@ const PurePreviewMessage = ({
   onEdit,
   onQuoteSelection,
   onRetryMessage,
+  generationError,
   searchSources,
   statsForNerds,
   messageSignature: _messageSignature,
@@ -676,6 +698,7 @@ const PurePreviewMessage = ({
   onEdit?: (message: ChatMessage) => void;
   onQuoteSelection?: (text: string) => void;
   onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
+  generationError?: GenerationError | null;
   searchSources?: Array<{ title: string; url: string }> | null;
   statsForNerds?: boolean;
 }) => {
@@ -731,8 +754,18 @@ const PurePreviewMessage = ({
   ) ?? { text: "", isStreaming: false, rendered: false };
 
   const parts = message.parts?.map((part, index) => {
+    const runtimePart: unknown = part;
     const { type } = part;
     const key = `message-${message.id}-part-${index}`;
+
+    if (isRuntimeErrorPart(runtimePart)) {
+      return (
+        <AssistantErrorBlock
+          key={key}
+          message={runtimePart.errorText || "The assistant response failed."}
+        />
+      );
+    }
 
     if (type === "reasoning") {
       if (!mergedReasoning.rendered && mergedReasoning.text) {
@@ -1014,6 +1047,13 @@ const PurePreviewMessage = ({
     <>
       {attachments}
       {parts}
+      {generationError && (
+        <AssistantErrorBlock
+          detail={generationError.detail}
+          message={generationError.message}
+          onRetry={onRetryMessage ? () => onRetryMessage(message) : undefined}
+        />
+      )}
       {actions}
       {isAssistant && searchSources && searchSources.length > 0 && (
         <div className="mt-2 space-y-1">
@@ -1072,6 +1112,55 @@ const PurePreviewMessage = ({
   );
 };
 
+export function AssistantErrorBlock({
+  detail,
+  message,
+  onRetry,
+}: {
+  detail?: string;
+  message: string;
+  onRetry?: () => void;
+}) {
+  const [firstLine, ...restLines] = message.split(/\r?\n/);
+  const detailText = detail ?? restLines.join("\n").trim();
+  const primaryMessage = detail ? message : firstLine;
+
+  return (
+    <div
+      className="max-w-[min(100%,720px)] rounded-xl border border-rose-300/70 bg-rose-50 px-4 py-3 text-rose-950 shadow-[var(--shadow-card)] dark:border-rose-900/80 dark:bg-rose-950/35 dark:text-rose-100"
+      data-testid="generation-error-message"
+      role="alert"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-rose-600 dark:text-rose-300" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-[13px] leading-5">Generation failed</p>
+          <p className="mt-1 break-words text-[13px] leading-5 text-rose-900/85 dark:text-rose-100/85">
+            {primaryMessage}
+          </p>
+          {detailText && (
+            <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-5 text-rose-900/70 dark:text-rose-100/70">
+              {detailText}
+            </p>
+          )}
+        </div>
+        {onRetry && (
+          <Button
+            className="h-8 shrink-0 border-rose-300 text-rose-950 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-100 dark:hover:bg-rose-900/50"
+            onClick={onRetry}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCcwIcon className="size-3.5" />
+            Retry
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const PreviewMessage = memo(
   PurePreviewMessage,
   (prevProps, nextProps) =>
@@ -1082,6 +1171,7 @@ export const PreviewMessage = memo(
     prevProps.isReadonly === nextProps.isReadonly &&
     prevProps.selectedModelId === nextProps.selectedModelId &&
     prevProps.requiresScrollPadding === nextProps.requiresScrollPadding &&
+    prevProps.generationError === nextProps.generationError &&
     prevProps.searchSources === nextProps.searchSources &&
     prevProps.statsForNerds === nextProps.statsForNerds &&
     prevProps.onEdit === nextProps.onEdit &&

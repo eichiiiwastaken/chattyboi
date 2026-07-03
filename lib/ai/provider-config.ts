@@ -19,6 +19,7 @@ const providerConfig = {
 } satisfies Record<string, ProviderConfig>;
 
 const GATEWAY_ENV_VAR = "AI_GATEWAY_API_KEY";
+const PLACEHOLDER_ENV_PREFIX = "replace-with-";
 
 export type ConfiguredProvider = keyof typeof providerConfig;
 
@@ -39,11 +40,19 @@ export function isProviderConfigured(provider: string): boolean {
   if (!isConfiguredProvider(provider)) {
     return false;
   }
-  return Boolean(process.env[providerConfig[provider].envVar]);
+  return hasUsableEnvValue(process.env[providerConfig[provider].envVar]);
 }
 
 export function isGatewayConfigured(): boolean {
-  return Boolean(process.env[GATEWAY_ENV_VAR]);
+  return hasUsableEnvValue(process.env[GATEWAY_ENV_VAR]);
+}
+
+function hasUsableEnvValue(value: string | undefined): boolean {
+  const trimmedValue = value?.trim();
+
+  return Boolean(
+    trimmedValue && !trimmedValue.startsWith(PLACEHOLDER_ENV_PREFIX)
+  );
 }
 
 export function shouldUseGateway(modelId: string): boolean {
@@ -64,10 +73,16 @@ export function normalizeModelIdForGateway(modelId: string): string {
   const provider = getProviderFromModelId(modelId);
 
   if (provider === "openrouter" || provider === "opencodego") {
-    return modelId.split("/").slice(1).join("/");
+    return normalizeGatewayAlias(modelId.split("/").slice(1).join("/"));
   }
 
-  return modelId;
+  return normalizeGatewayAlias(modelId);
+}
+
+export function normalizeGatewayAlias(modelId: string): string {
+  const [provider, ...rest] = modelId.split("/");
+
+  return [provider?.replace(/^~/, ""), ...rest].filter(Boolean).join("/");
 }
 
 export function getMissingProviderConfig(modelId: string): {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ChatbotError,
+  getErrorMessageFromUnknown,
   getMessageByErrorCode,
   visibilityBySurface,
 } from "../errors";
@@ -90,6 +91,26 @@ describe("getMessageByErrorCode", () => {
   it("returns default message for unknown codes", () => {
     const msg = getMessageByErrorCode("unknown:surface" as never);
     expect(msg).toBe("Something went wrong. Please try again later.");
+  });
+});
+
+describe("getErrorMessageFromUnknown", () => {
+  it("keeps ChatbotError causes as user-visible detail", () => {
+    const err = new ChatbotError("bad_request:chat", "OpenAI is missing key");
+
+    expect(getErrorMessageFromUnknown(err)).toEqual({
+      detail: "OpenAI is missing key",
+      message:
+        "The selected model provider is not configured. Please update your deployment environment and try again.",
+    });
+  });
+
+  it("redacts obvious secrets from provider errors", () => {
+    const normalized = getErrorMessageFromUnknown(
+      new Error("Provider rejected api_key=sk-secretsecret123")
+    );
+
+    expect(normalized.message).toBe("Provider rejected api_key=[redacted]");
   });
 });
 

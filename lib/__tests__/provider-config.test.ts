@@ -49,5 +49,17 @@ describe("provider config", () => {
     expect(normalizeModelIdForGateway("openrouter/google/gemini")).toBe(
       "google/gemini"
     );
+    expect(normalizeModelIdForGateway("openrouter/~google/gemini")).toBe(
+      "google/gemini"
+    );
+    expect(normalizeModelIdForGateway("~google/gemini")).toBe("google/gemini");
+  });
+
+  it("does not treat placeholder env values as configured", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "replace-with-openrouter-api-key");
+    vi.stubEnv("AI_GATEWAY_API_KEY", "replace-with-ai-gateway-key");
+
+    expect(isProviderConfigured("openrouter")).toBe(false);
+    expect(isGatewayConfigured()).toBe(false);
   });
 });

@@ -7,6 +7,8 @@ import { GATEWAY_FALLBACK_CHAT_MODEL, titleModel } from "./models";
 import {
   getProviderFromModelId,
   isGatewayConfigured,
+  isProviderConfigured,
+  normalizeGatewayAlias,
   shouldUseGateway,
 } from "./provider-config";
 
@@ -27,11 +29,13 @@ function toGatewayModelId(modelId: string) {
   const provider = getProviderFromModelId(modelId);
 
   if (provider === "openrouter" || provider === "opencodego") {
-    const gatewayModelId = modelId.split("/").slice(1).join("/");
+    const gatewayModelId = normalizeGatewayAlias(
+      modelId.split("/").slice(1).join("/")
+    );
     return gatewayModelId || GATEWAY_FALLBACK_CHAT_MODEL;
   }
 
-  return modelId;
+  return normalizeGatewayAlias(modelId);
 }
 
 export const myProvider = isTestEnvironment
@@ -59,12 +63,21 @@ export function getLanguageModel(modelId: string) {
   const actualModelId = rest.join("/");
 
   if (provider === "opencodego") {
+    if (!isProviderConfigured(provider)) {
+      throw new Error("OpenCode Go is missing OPENCODE_API_KEY.");
+    }
     return opencodego(actualModelId);
   }
   if (provider === "openrouter") {
+    if (!isProviderConfigured(provider)) {
+      throw new Error("OpenRouter is missing OPENROUTER_API_KEY.");
+    }
     return openrouter(actualModelId);
   }
   if (provider === "openai") {
+    if (!isProviderConfigured(provider)) {
+      throw new Error("OpenAI is missing OPENAI_API_KEY.");
+    }
     return openai(actualModelId);
   }
 
@@ -84,12 +97,21 @@ export function getTitleModel() {
   const actualModelId = rest.join("/");
 
   if (provider === "opencodego") {
+    if (!isProviderConfigured(provider)) {
+      throw new Error("OpenCode Go is missing OPENCODE_API_KEY.");
+    }
     return opencodego(actualModelId);
   }
   if (provider === "openrouter") {
+    if (!isProviderConfigured(provider)) {
+      throw new Error("OpenRouter is missing OPENROUTER_API_KEY.");
+    }
     return openrouter(actualModelId);
   }
   if (provider === "openai") {
+    if (!isProviderConfigured(provider)) {
+      throw new Error("OpenAI is missing OPENAI_API_KEY.");
+    }
     return openai(actualModelId);
   }
 

@@ -23,6 +23,11 @@ export type ErrorCode = `${ErrorType}:${Surface}`;
 
 export type ErrorVisibility = "response" | "log" | "none";
 
+export type NormalizedError = {
+  detail?: string;
+  message: string;
+};
+
 export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   database: "log",
   chat: "response",
@@ -75,6 +80,72 @@ export class ChatbotError extends Error {
 
     return Response.json({ code, message, cause }, { status: statusCode });
   }
+}
+
+const MAX_ERROR_DETAIL_LENGTH = 800;
+
+function redactSensitiveErrorText(text: string) {
+  return text
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "sk-...[redacted]")
+    .replace(
+      /\b(api[_-]?key|token|authorization|bearer)\b(\s*[:=]\s*)([^\s,;]+)/gi,
+      "$1$2[redacted]"
+    );
+}
+
+function truncateErrorDetail(text: string) {
+  return text.length > MAX_ERROR_DETAIL_LENGTH
+    ? `${text.slice(0, MAX_ERROR_DETAIL_LENGTH - 1)}...`
+    : text;
+}
+
+function normalizeErrorText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.trim() || undefined;
+  }
+
+  if (value == null) {
+    return undefined;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+export function getErrorMessageFromUnknown(
+  error: unknown,
+  fallback = "Something went wrong. Please try again later."
+): NormalizedError {
+  if (error instanceof ChatbotError) {
+    return {
+      detail:
+        error.cause === undefined
+          ? undefined
+          : truncateErrorDetail(
+              redactSensitiveErrorText(String(error.cause).trim())
+            ),
+      message: error.message || fallback,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: truncateErrorDetail(
+        redactSensitiveErrorText(error.message || fallback)
+      ),
+    };
+  }
+
+  const message = normalizeErrorText(error);
+
+  return {
+    message: message
+      ? truncateErrorDetail(redactSensitiveErrorText(message))
+      : fallback,
+  };
 }
 
 export function getMessageByErrorCode(errorCode: ErrorCode): string {

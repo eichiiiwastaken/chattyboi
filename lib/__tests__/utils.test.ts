@@ -114,4 +114,21 @@ describe("getTextFromMessage", () => {
     };
     expect(getTextFromMessage(message)).toBe("");
   });
+
+  it("extracts persisted error parts", () => {
+    const message = {
+      id: "1",
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "error",
+          errorText: "Generation failed because the provider is missing a key.",
+        },
+      ],
+    } as unknown as UIMessage;
+
+    expect(getTextFromMessage(message)).toBe(
+      "Generation failed because the provider is missing a key."
+    );
+  });
 });

@@ -3,7 +3,13 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { BrainIcon, CheckIcon, EyeIcon, WrenchIcon } from "lucide-react";
+import {
+  AlertTriangleIcon,
+  BrainIcon,
+  CheckIcon,
+  EyeIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
@@ -144,6 +150,10 @@ function PureMultimodalInput({
   );
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
+  const supportsAttachments = Boolean(
+    capabilities?.[selectedModelId]?.vision ||
+      capabilities?.[selectedModelId]?.file
+  );
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -374,6 +384,11 @@ function PureMultimodalInput({
         return;
       }
 
+      if (!supportsAttachments) {
+        toast.error("The selected model doesn't support image uploads.");
+        return;
+      }
+
       event.preventDefault();
 
       const files = fileItems
@@ -416,7 +431,7 @@ function PureMultimodalInput({
         });
       }
     },
-    [setAttachments, uploadFile]
+    [setAttachments, supportsAttachments, uploadFile]
   );
 
   return (
@@ -437,15 +452,18 @@ function PureMultimodalInput({
         </div>
       )}
 
-      <input
-        accept="image/jpeg,image/png,application/pdf"
-        className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
-        multiple
-        onChange={handleFileChange}
-        ref={fileInputRef}
-        tabIndex={-1}
-        type="file"
-      />
+      {supportsAttachments && (
+        <input
+          accept="image/jpeg,image/png,application/pdf"
+          aria-hidden="true"
+          className="pointer-events-none fixed -top-4 -left-4 size-0.5 opacity-0"
+          multiple
+          onChange={handleFileChange}
+          ref={fileInputRef}
+          tabIndex={-1}
+          type="file"
+        />
+      )}
 
       <div className="relative">
         {slashOpen && (
@@ -563,8 +581,7 @@ function PureMultimodalInput({
               onToggle={setWebSearchEnabled}
               status={status}
             />
-            {(capabilities?.[selectedModelId]?.vision ||
-              capabilities?.[selectedModelId]?.file) && (
+            {supportsAttachments && (
               <AttachmentsButton
                 fileInputRef={fileInputRef}
                 selectedModelId={selectedModelId}
@@ -713,12 +730,18 @@ function PureModelSelectorCompact({
     modelsData?.capabilities ?? modelsData;
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
   const activeModels =
-    dynamicModels && dynamicModels.length > 0 ? dynamicModels : [titleModel];
+    dynamicModels === undefined
+      ? [titleModel]
+      : dynamicModels.length > 0
+        ? dynamicModels
+        : [];
+  const hasConfiguredModels = activeModels.length > 0;
 
   const selectedModel =
     activeModels.find((m: ChatModel) => m.id === selectedModelId) ??
     activeModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
-    activeModels[0];
+    activeModels[0] ??
+    titleModel;
 
   useEffect(() => {
     if (
@@ -741,13 +764,32 @@ function PureModelSelectorCompact({
           data-testid="model-selector"
           variant="ghost"
         >
-          {provider && <ModelSelectorLogo provider={provider} />}
-          <ModelSelectorName>{selectedModel.name}</ModelSelectorName>
+          {hasConfiguredModels && provider ? (
+            <ModelSelectorLogo provider={provider} />
+          ) : (
+            <AlertTriangleIcon className="size-4 shrink-0 text-amber-500" />
+          )}
+          <ModelSelectorName>
+            {hasConfiguredModels ? selectedModel.name : "No models configured"}
+          </ModelSelectorName>
         </Button>
       </ModelSelectorTrigger>
       <ModelSelectorContent>
-        <ModelSelectorInput placeholder="Search models..." />
+        {hasConfiguredModels && (
+          <ModelSelectorInput placeholder="Search models..." />
+        )}
         <ModelSelectorList>
+          {!hasConfiguredModels && (
+            <div className="px-3 py-3 text-[13px]">
+              <p className="font-medium text-foreground">
+                No configured models
+              </p>
+              <p className="mt-1 text-muted-foreground leading-5">
+                Add OPENCODE_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or
+                AI_GATEWAY_API_KEY.
+              </p>
+            </div>
+          )}
           {(() => {
             const allModels = activeModels;
             const curatedIds = new Set(allModels.map((m) => m.id));

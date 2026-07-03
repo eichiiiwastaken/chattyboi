@@ -39,7 +39,7 @@ import {
   updateMessage,
 } from "@/lib/db/queries";
 import type { DBMessage } from "@/lib/db/schema";
-import { ChatbotError } from "@/lib/errors";
+import { ChatbotError, getErrorMessageFromUnknown } from "@/lib/errors";
 import { checkIpRateLimit } from "@/lib/ratelimit";
 import { publishChatEvent } from "@/lib/realtime/events";
 import { getResumableStreamContext } from "@/lib/streams/resumable";
@@ -49,11 +49,70 @@ import {
   isSafeUploadFilename,
   readUploadMetadata,
 } from "@/lib/uploads";
-import { convertToUIMessages, generateUUID } from "@/lib/utils";
+import {
+  convertToUIMessages,
+  generateUUID,
+  getTextFromMessage,
+} from "@/lib/utils";
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
 export const maxDuration = 60;
+
+function getFallbackTitleFromMessage(message: ChatMessage) {
+  const text = getTextFromMessage(message).replace(/\s+/g, " ").trim();
+
+  if (!text) {
+    return "New chat";
+  }
+
+  return text.length > 80 ? `${text.slice(0, 77).trim()}...` : text;
+}
+
+async function saveAssistantErrorMessage({
+  chatId,
+  errorText,
+  modelId,
+  modelName,
+  userId,
+}: {
+  chatId: string;
+  errorText: string;
+  modelId: string;
+  modelName: string;
+  userId: string;
+}) {
+  const createdAt = new Date();
+  const messageId = generateUUID();
+
+  await saveMessages({
+    messages: [
+      {
+        id: messageId,
+        role: "assistant",
+        parts: [{ type: "error", errorText }] as DBMessage["parts"],
+        createdAt,
+        attachments: [],
+        chatId,
+        metadata: {
+          modelId,
+          modelName,
+        } as DBMessage["metadata"],
+      },
+    ],
+  });
+
+  await publishChatEvent({
+    userId,
+    event: {
+      type: "message.created",
+      chatId,
+      messageId,
+      role: "assistant",
+      createdAt: createdAt.toISOString(),
+    },
+  });
+}
 
 export async function POST(request: Request) {
   let requestBody: PostRequestBody;
@@ -93,15 +152,6 @@ export async function POST(request: Request) {
       : (firstAllowedModel ?? DEFAULT_CHAT_MODEL);
 
     const missingProviderConfig = getMissingProviderConfig(chatModel);
-    if (missingProviderConfig) {
-      return new ChatbotError(
-        "bad_request:chat",
-        `${missingProviderConfig.providerName} is missing ${missingProviderConfig.envVar}.`
-      ).toResponse();
-    }
-
-    const models = await getAllModels();
-    const modelName = models.find((m) => m.id === chatModel)?.name ?? chatModel;
 
     await checkIpRateLimit(ipAddress(request));
 
@@ -124,6 +174,7 @@ export async function POST(request: Request) {
     let messagesFromDb: DBMessage[] = [];
     let regeneratedUserMessage: ChatMessage | null = null;
     let titlePromise: Promise<string> | null = null;
+    let shouldGenerateTitle = false;
 
     if (chat) {
       if (chat.userId !== session.user.id) {
@@ -176,7 +227,7 @@ export async function POST(request: Request) {
           createdAt: new Date().toISOString(),
         },
       });
-      titlePromise = generateTitleFromUserMessage({ message });
+      shouldGenerateTitle = true;
     }
 
     let uiMessages: ChatMessage[];
@@ -268,6 +319,49 @@ export async function POST(request: Request) {
         },
       });
     }
+
+    if (missingProviderConfig) {
+      const providerConfigError = new ChatbotError(
+        "bad_request:chat",
+        `${missingProviderConfig.providerName} is missing ${missingProviderConfig.envVar}.`
+      );
+      const normalizedError = getErrorMessageFromUnknown(providerConfigError);
+      const errorText = normalizedError.detail
+        ? `${normalizedError.message}\n${normalizedError.detail}`
+        : normalizedError.message;
+
+      if (!isOneTimeChat) {
+        if (shouldGenerateTitle && message?.role === "user") {
+          const title = getFallbackTitleFromMessage(message);
+          await updateChatTitleById({ chatId: id, title });
+          await publishChatEvent({
+            userId: session.user.id,
+            event: {
+              type: "chat.title.updated",
+              chatId: id,
+              title,
+            },
+          });
+        }
+
+        await saveAssistantErrorMessage({
+          chatId: id,
+          errorText,
+          modelId: chatModel,
+          modelName: chatModel,
+          userId: session.user.id,
+        });
+      }
+
+      return providerConfigError.toResponse();
+    }
+
+    if (shouldGenerateTitle && message?.role === "user") {
+      titlePromise = generateTitleFromUserMessage({ message });
+    }
+
+    const models = await getAllModels();
+    const modelName = models.find((m) => m.id === chatModel)?.name ?? chatModel;
 
     const modelCapabilities = await getCapabilities();
     const capabilities = modelCapabilities[chatModel];
@@ -464,15 +558,22 @@ export async function POST(request: Request) {
         }
       },
       onError: (error) => {
+        const { detail, message: errorMessage } = getErrorMessageFromUnknown(
+          error,
+          "The assistant response failed."
+        );
+
+        console.error("AI stream failed:", error);
+
         if (
-          error instanceof Error &&
-          error.message?.includes(
+          errorMessage.includes(
             "AI Gateway requires a valid credit card on file to service requests"
           )
         ) {
           return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
         }
-        return "Oops, an error occurred!";
+
+        return detail ? `${errorMessage}\n${detail}` : errorMessage;
       },
     });
 

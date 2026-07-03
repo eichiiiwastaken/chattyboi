@@ -117,7 +117,7 @@ export async function fetchOpenCodeGoModels(): Promise<ChatModel[]> {
 }
 
 export async function fetchOpenAIModels(): Promise<ChatModel[]> {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!isProviderConfigured("openai")) {
     return [];
   }
   try {

@@ -6,7 +6,11 @@ import { type ClassValue, clsx } from 'clsx';
 import { formatISO } from 'date-fns';
 import { twMerge } from 'tailwind-merge';
 import type { DBMessage, Document } from '@/lib/db/schema';
-import { ChatbotError, type ErrorCode } from './errors';
+import {
+  ChatbotError,
+  type ErrorCode,
+  getErrorMessageFromUnknown,
+} from './errors';
 import type { ChatMessage, ChatTools, CustomUIDataTypes, MessageMetadata } from './types';
 
 export function cn(...inputs: ClassValue[]) {
@@ -17,8 +21,7 @@ export const fetcher = async (url: string) => {
   const response = await fetch(url);
 
   if (!response.ok) {
-    const { code, cause } = await response.json();
-    throw new ChatbotError(code as ErrorCode, cause);
+    throw await createErrorFromResponse(response);
   }
 
   return response.json();
@@ -32,8 +35,7 @@ export async function fetchWithErrorHandlers(
     const response = await fetch(input, init);
 
     if (!response.ok) {
-      const { code, cause } = await response.json();
-      throw new ChatbotError(code as ErrorCode, cause);
+      throw await createErrorFromResponse(response);
     }
 
     return response;
@@ -44,6 +46,56 @@ export async function fetchWithErrorHandlers(
 
     throw error;
   }
+}
+
+async function createErrorFromResponse(response: Response) {
+  let payload: unknown;
+
+  try {
+    payload = await response.clone().json();
+  } catch {
+    try {
+      payload = await response.text();
+    } catch {
+      payload = undefined;
+    }
+  }
+
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'code' in payload &&
+    typeof payload.code === 'string' &&
+    payload.code.includes(':')
+  ) {
+    const cause =
+      'cause' in payload && payload.cause !== undefined
+        ? String(payload.cause)
+        : undefined;
+    return new ChatbotError(payload.code as ErrorCode, cause);
+  }
+
+  const rawMessage =
+    payload &&
+    typeof payload === 'object' &&
+    'message' in payload &&
+    typeof payload.message === 'string'
+      ? payload.message
+      : payload &&
+          typeof payload === 'object' &&
+          'error' in payload &&
+          typeof payload.error === 'string'
+        ? payload.error
+        : typeof payload === 'string'
+          ? payload
+          : undefined;
+
+  const { message } = getErrorMessageFromUnknown(
+    rawMessage,
+    response.statusText || 'Request failed.'
+  );
+
+  return new Error(message);
 }
 
 export function generateUUID(): string {
@@ -91,8 +143,25 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
 export function getTextFromMessage(message: ChatMessage | UIMessage): string {
   return sanitizeText(
     message.parts
-      .filter((part) => part.type === 'text')
-      .map((part) => (part as { type: 'text'; text: string}).text)
+      .map((part) => {
+        if (part.type === 'text') {
+          return (part as { type: 'text'; text: string }).text;
+        }
+
+        const runtimePart: unknown = part;
+        if (
+          typeof runtimePart === 'object' &&
+          runtimePart !== null &&
+          'type' in runtimePart &&
+          runtimePart.type === 'error' &&
+          'errorText' in runtimePart &&
+          typeof runtimePart.errorText === 'string'
+        ) {
+          return runtimePart.errorText;
+        }
+
+        return '';
+      })
       .join(''),
   );
 }

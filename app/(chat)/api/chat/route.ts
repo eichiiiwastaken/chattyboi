@@ -6,6 +6,8 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  type InferUIMessageChunk,
+  type StepResult,
   stepCountIs,
   streamText,
 } from "ai";
@@ -62,6 +64,66 @@ import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
 export const maxDuration = 60;
+
+function searchResultCount(output: unknown) {
+  if (
+    output &&
+    typeof output === "object" &&
+    "results" in output &&
+    Array.isArray(output.results)
+  ) {
+    return output.results.length;
+  }
+
+  return 0;
+}
+
+function withSearchAnswerFallback(
+  stream: ReadableStream<InferUIMessageChunk<ChatMessage>>,
+  context: { chatId: string; modelId: string }
+) {
+  let sawSearchOutput = false;
+  let sawTextAfterSearch = false;
+
+  return stream.pipeThrough(
+    new TransformStream<InferUIMessageChunk<ChatMessage>>({
+      transform(chunk, controller) {
+        if (
+          chunk.type === "tool-output-available" &&
+          searchResultCount(chunk.output) > 0
+        ) {
+          sawSearchOutput = true;
+        }
+
+        if (
+          sawSearchOutput &&
+          chunk.type === "text-delta" &&
+          chunk.delta.trim().length > 0
+        ) {
+          sawTextAfterSearch = true;
+        }
+
+        if (chunk.type === "finish" && sawSearchOutput && !sawTextAfterSearch) {
+          const textId = generateUUID();
+          const fallbackText =
+            "I found search results, but the model finished without producing a visible answer. Please retry the message; the search results above did come back successfully.";
+
+          console.error("Search turn finished without answer text", context);
+
+          controller.enqueue({ type: "text-start", id: textId });
+          controller.enqueue({
+            type: "text-delta",
+            id: textId,
+            delta: fallbackText,
+          });
+          controller.enqueue({ type: "text-end", id: textId });
+        }
+
+        controller.enqueue(chunk);
+      },
+    })
+  );
+}
 
 function getFallbackTitleFromMessage(message: ChatMessage) {
   const text = getTextFromMessage(message).replace(/\s+/g, " ").trim();
@@ -472,13 +534,14 @@ export async function POST(request: Request) {
       execute: async ({ writer: dataStream }) => {
         const startTime = Date.now();
         let firstChunkTime: number | undefined;
+        const baseSystemPrompt = systemPrompt({
+          requestHints,
+          webSearchEnabled: canUseWebSearch,
+        });
 
         const result = streamText({
           model: getLanguageModel(chatModel),
-          system: systemPrompt({
-            requestHints,
-            webSearchEnabled: canUseWebSearch,
-          }),
+          system: baseSystemPrompt,
           messages: modelMessages,
           stopWhen: canUseWebSearch ? stepCountIs(2) : stepCountIs(5),
           tools: canUseWebSearch ? { webSearch } : undefined,
@@ -490,7 +553,11 @@ export async function POST(request: Request) {
                       activeTools: ["webSearch"],
                       toolChoice: "auto",
                     }
-                  : { activeTools: [], toolChoice: "none" }
+                  : {
+                      activeTools: [],
+                      system: `${baseSystemPrompt}\n\nYou have already received the webSearch result for this turn. Do not call tools again. Answer the user's latest request now using the returned search results, and cite the source title and URL for current or external claims. If the results are insufficient, say what the results showed and what remains uncertain.`,
+                      toolChoice: "none",
+                    }
             : undefined,
           providerOptions: getReasoningProviderOptions({
             chatModel,
@@ -501,6 +568,26 @@ export async function POST(request: Request) {
             isEnabled: isProductionEnvironment,
             functionId: "stream-text",
           },
+          onStepFinish: (step: StepResult<{ webSearch: typeof webSearch }>) => {
+            if (!canUseWebSearch) {
+              return;
+            }
+
+            console.info("AI search step finished", {
+              chatId: id,
+              modelId: chatModel,
+              stepNumber: step.stepNumber,
+              finishReason: step.finishReason,
+              textLength: step.text.trim().length,
+              reasoningLength: step.reasoningText?.trim().length ?? 0,
+              toolCalls: step.toolCalls.map((toolCall) => toolCall.toolName),
+              toolResultCount: step.toolResults.reduce(
+                (count, toolResult) =>
+                  count + searchResultCount(toolResult.output),
+                0
+              ),
+            });
+          },
           onChunk: () => {
             if (firstChunkTime === undefined) {
               firstChunkTime = Date.now() - startTime;
@@ -509,25 +596,28 @@ export async function POST(request: Request) {
         });
 
         dataStream.merge(
-          result.toUIMessageStream({
-            sendReasoning: isReasoningModel,
-            messageMetadata: ({ part }) => {
-              if (part.type === "finish") {
-                return {
-                  modelId: chatModel,
-                  modelName,
-                  usage: {
-                    inputTokens: part.totalUsage.inputTokens ?? 0,
-                    outputTokens: part.totalUsage.outputTokens ?? 0,
-                    totalTokens: part.totalUsage.totalTokens ?? 0,
-                  },
-                  duration: Date.now() - startTime,
-                  timeToFirstToken: firstChunkTime,
-                };
-              }
-              return undefined;
-            },
-          })
+          withSearchAnswerFallback(
+            result.toUIMessageStream({
+              sendReasoning: isReasoningModel,
+              messageMetadata: ({ part }) => {
+                if (part.type === "finish") {
+                  return {
+                    modelId: chatModel,
+                    modelName,
+                    usage: {
+                      inputTokens: part.totalUsage.inputTokens ?? 0,
+                      outputTokens: part.totalUsage.outputTokens ?? 0,
+                      totalTokens: part.totalUsage.totalTokens ?? 0,
+                    },
+                    duration: Date.now() - startTime,
+                    timeToFirstToken: firstChunkTime,
+                  };
+                }
+                return undefined;
+              },
+            }),
+            { chatId: id, modelId: chatModel }
+          )
         );
 
         if (titlePromise) {

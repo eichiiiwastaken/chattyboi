@@ -8,6 +8,7 @@ import {
   BrainIcon,
   CheckIcon,
   EyeIcon,
+  GaugeIcon,
   WrenchIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -45,6 +46,7 @@ import {
   type ModelCapabilities,
   titleModel,
 } from "@/lib/ai/models";
+import type { ReasoningEffort } from "@/lib/ai/reasoning";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -55,6 +57,13 @@ import {
   PromptInputTools,
 } from "../ai-elements/prompt-input";
 import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import {
   StopIcon,
   T3AttachIcon,
@@ -92,6 +101,8 @@ function PureMultimodalInput({
   selectedVisibilityType: _selectedVisibilityType,
   selectedModelId,
   onModelChange,
+  selectedReasoningEffort,
+  onReasoningEffortChange,
   editingMessage,
   onCancelEdit,
   isLoading: _isLoading,
@@ -113,6 +124,8 @@ function PureMultimodalInput({
   selectedVisibilityType: VisibilityType;
   selectedModelId: string;
   onModelChange?: (modelId: string) => void;
+  selectedReasoningEffort: ReasoningEffort;
+  onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   editingMessage?: ChatMessage | null;
   onCancelEdit?: () => void;
   isLoading?: boolean;
@@ -154,6 +167,7 @@ function PureMultimodalInput({
     capabilities?.[selectedModelId]?.vision ||
       capabilities?.[selectedModelId]?.file
   );
+  const supportsReasoning = Boolean(capabilities?.[selectedModelId]?.reasoning);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -588,6 +602,13 @@ function PureMultimodalInput({
                 status={status}
               />
             )}
+            {supportsReasoning && (
+              <ReasoningEffortButton
+                onChange={onReasoningEffortChange}
+                selectedEffort={selectedReasoningEffort}
+                status={status}
+              />
+            )}
             <ModelSelectorCompact
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
@@ -638,6 +659,11 @@ export const MultimodalInput = memo(
       return false;
     }
     if (prevProps.selectedModelId !== nextProps.selectedModelId) {
+      return false;
+    }
+    if (
+      prevProps.selectedReasoningEffort !== nextProps.selectedReasoningEffort
+    ) {
       return false;
     }
     if (prevProps.editingMessage !== nextProps.editingMessage) {
@@ -711,6 +737,65 @@ function PureWebSearchButton({
 }
 
 const WebSearchButton = memo(PureWebSearchButton);
+
+const reasoningEffortLabels: Record<ReasoningEffort, string> = {
+  auto: "Auto",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
+
+function PureReasoningEffortButton({
+  selectedEffort,
+  onChange,
+  status,
+}: {
+  selectedEffort: ReasoningEffort;
+  onChange?: (effort: ReasoningEffort) => void;
+  status: UseChatHelpers<ChatMessage>["status"];
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          className={cn(
+            "h-9 shrink-0 rounded-lg border px-2 text-[12px] transition-colors sm:h-7",
+            selectedEffort === "auto"
+              ? "border-border/40 text-foreground hover:border-border hover:text-foreground"
+              : "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
+          )}
+          data-testid="reasoning-effort-button"
+          disabled={status !== "ready"}
+          type="button"
+          variant="ghost"
+        >
+          <BrainIcon className="size-3.5" />
+          <span className="hidden max-w-16 truncate sm:inline">
+            {reasoningEffortLabels[selectedEffort]}
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+          <GaugeIcon className="size-3.5" />
+          <span>Reasoning level</span>
+        </div>
+        <DropdownMenuRadioGroup
+          onValueChange={(value) => onChange?.(value as ReasoningEffort)}
+          value={selectedEffort}
+        >
+          {(["auto", "low", "medium", "high"] as const).map((effort) => (
+            <DropdownMenuRadioItem key={effort} value={effort}>
+              {reasoningEffortLabels[effort]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+const ReasoningEffortButton = memo(PureReasoningEffortButton);
 
 function PureModelSelectorCompact({
   selectedModelId,

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { SharedV3ProviderOptions } from "@ai-sdk/provider";
 import { geolocation, ipAddress } from "@vercel/functions";
 import {
   convertToModelMessages,
@@ -20,9 +21,12 @@ import {
 import { type RequestHints, systemPrompt } from "@/lib/ai/prompts";
 import {
   getMissingProviderConfig,
+  getProviderFromModelId,
   normalizeModelIdForGateway,
+  shouldUseGateway,
 } from "@/lib/ai/provider-config";
 import { getLanguageModel } from "@/lib/ai/providers";
+import type { ReasoningEffort } from "@/lib/ai/reasoning";
 import { webSearch } from "@/lib/ai/tools/web-search";
 
 import { isProductionEnvironment } from "@/lib/constants";
@@ -67,6 +71,44 @@ function getFallbackTitleFromMessage(message: ChatMessage) {
   }
 
   return text.length > 80 ? `${text.slice(0, 77).trim()}...` : text;
+}
+
+function getReasoningProviderOptions({
+  chatModel,
+  effort,
+  isReasoningModel,
+}: {
+  chatModel: string;
+  effort?: ReasoningEffort;
+  isReasoningModel: boolean;
+}): SharedV3ProviderOptions {
+  if (!isReasoningModel || !effort || effort === "auto") {
+    return {};
+  }
+
+  if (shouldUseGateway(chatModel)) {
+    return {};
+  }
+
+  const provider = getProviderFromModelId(chatModel);
+
+  if (provider === "opencodego") {
+    return {
+      opencodego: {
+        reasoningEffort: effort,
+      },
+    };
+  }
+
+  if (provider === "openai" || provider === "openrouter") {
+    return {
+      openai: {
+        reasoningEffort: effort,
+      },
+    };
+  }
+
+  return {};
 }
 
 async function saveAssistantErrorMessage({
@@ -132,6 +174,7 @@ export async function POST(request: Request) {
       trigger,
       messageId,
       selectedChatModel,
+      selectedReasoningEffort,
       selectedVisibilityType,
       webSearchEnabled,
       isOneTimeChat,
@@ -449,7 +492,11 @@ export async function POST(request: Request) {
                     }
                   : { activeTools: [], toolChoice: "none" }
             : undefined,
-          providerOptions: {},
+          providerOptions: getReasoningProviderOptions({
+            chatModel,
+            effort: selectedReasoningEffort,
+            isReasoningModel,
+          }),
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,
             functionId: "stream-text",

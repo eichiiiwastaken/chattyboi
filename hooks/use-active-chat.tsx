@@ -23,6 +23,7 @@ import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
+import { isReasoningEffort, type ReasoningEffort } from "@/lib/ai/reasoning";
 import type { Settings, Vote } from "@/lib/db/schema";
 import { ChatbotError, getErrorMessageFromUnknown } from "@/lib/errors";
 import type { ChatMessage } from "@/lib/types";
@@ -60,6 +61,8 @@ type ActiveChatContextValue = {
   setShowCreditCardAlert: Dispatch<SetStateAction<boolean>>;
   webSearchEnabled: boolean;
   setWebSearchEnabled: (enabled: boolean) => void;
+  reasoningEffort: ReasoningEffort;
+  setReasoningEffort: (effort: ReasoningEffort) => void;
   searchSources: SearchSource[] | null;
   setSearchSources: (sources: SearchSource[] | null) => void;
   generationError: GenerationError | null;
@@ -111,6 +114,22 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const [input, setInput] = useState("");
   const [showCreditCardAlert, setShowCreditCardAlert] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [reasoningEffort, setReasoningEffortState] =
+    useState<ReasoningEffort>("auto");
+  const reasoningEffortRef = useRef(reasoningEffort);
+  const setReasoningEffort = useCallback((effort: ReasoningEffort) => {
+    reasoningEffortRef.current = effort;
+    setReasoningEffortState(effort);
+    window.localStorage.setItem("reasoning-effort", effort);
+  }, []);
+
+  useEffect(() => {
+    const storedEffort = window.localStorage.getItem("reasoning-effort");
+    if (isReasoningEffort(storedEffort)) {
+      reasoningEffortRef.current = storedEffort;
+      setReasoningEffortState(storedEffort);
+    }
+  }, []);
   const [searchSources, setSearchSources] = useState<SearchSource[] | null>(
     null
   );
@@ -223,6 +242,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
             trigger: request.trigger,
             messageId: request.messageId,
             selectedChatModel: currentModelIdRef.current,
+            selectedReasoningEffort: reasoningEffortRef.current,
             selectedVisibilityType: visibility,
             isOneTimeChat,
             ...request.body,
@@ -337,6 +357,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     const params = new URLSearchParams(window.location.search);
     const query = params.get("q") ?? params.get("query");
     const searchParam = params.get("search");
+    const effortParam = params.get("effort");
 
     if (query && !hasAppendedQueryRef.current) {
       if (settingsData === undefined && !settingsError) {
@@ -349,6 +370,10 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       const shouldSearch = searchParam === "true" || searchParam === "1";
       if (shouldSearch) {
         setWebSearchEnabled(true);
+      }
+
+      if (isReasoningEffort(effortParam)) {
+        setReasoningEffort(effortParam);
       }
 
       const urlDefaultModel = settings?.defaultSearchModel;
@@ -383,6 +408,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     settings?.defaultSearchModel,
     settingsData,
     settingsError,
+    setReasoningEffort,
   ]);
 
   useAutoResume({
@@ -425,6 +451,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       setShowCreditCardAlert,
       webSearchEnabled,
       setWebSearchEnabled,
+      reasoningEffort,
+      setReasoningEffort,
       searchSources,
       setSearchSources,
       generationError,
@@ -453,12 +481,14 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       currentModelId,
       showCreditCardAlert,
       webSearchEnabled,
+      reasoningEffort,
       searchSources,
       generationError,
       clearGenerationError,
       setGenerationErrorFromUnknown,
       settings,
       isOneTimeChat,
+      setReasoningEffort,
     ]
   );
 

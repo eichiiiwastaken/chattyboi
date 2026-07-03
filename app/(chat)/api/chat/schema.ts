@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REASONING_EFFORTS } from "@/lib/ai/reasoning";
 
 export const MAX_CHAT_TEXT_LENGTH = 100_000;
 
@@ -37,6 +38,7 @@ export const postRequestBodySchema = z.object({
     .optional(),
   messageId: z.string().optional(),
   selectedChatModel: z.string(),
+  selectedReasoningEffort: z.enum(REASONING_EFFORTS).optional(),
   selectedVisibilityType: z.enum(["public", "private"]),
   webSearchEnabled: z.boolean().optional(),
   isOneTimeChat: z.boolean().optional(),

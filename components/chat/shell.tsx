@@ -54,6 +54,8 @@ export function ChatShell() {
     showCreditCardAlert,
     setShowCreditCardAlert,
     webSearchEnabled,
+    reasoningEffort,
+    setReasoningEffort,
     searchSources,
     setSearchSources,
     generationError,
@@ -216,7 +218,9 @@ export function ChatShell() {
                     setInput("");
                   }}
                   onModelChange={setCurrentModelId}
+                  onReasoningEffortChange={setReasoningEffort}
                   selectedModelId={currentModelId}
+                  selectedReasoningEffort={reasoningEffort}
                   selectedVisibilityType={visibilityType}
                   sendMessage={
                     editingMessage

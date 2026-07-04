@@ -16,6 +16,22 @@ type ExaResult = {
 };
 
 type SearchProvider = "exa" | "tavily";
+type SearchResult = {
+  title: string;
+  url: string;
+  content: string;
+};
+type SearchWebResult =
+  | {
+      query: string;
+      results: SearchResult[];
+    }
+  | {
+      query: string;
+      error: string;
+      status: number;
+      results: [];
+    };
 
 const PLACEHOLDER_ENV_PREFIX = "replace-with-";
 const searchProviders = ["exa", "tavily"] as const;
@@ -98,7 +114,10 @@ async function readSearchError(response: Response, provider: SearchProvider) {
   }
 }
 
-function connectionSearchError(query: string, provider: SearchProvider) {
+function connectionSearchError(
+  query: string,
+  provider: SearchProvider
+): SearchWebResult {
   const providerLabel = searchProviderLabels[provider];
 
   return {
@@ -109,7 +128,7 @@ function connectionSearchError(query: string, provider: SearchProvider) {
   };
 }
 
-function invalidSearchQuery(query: string) {
+function invalidSearchQuery(query: string): SearchWebResult {
   return {
     query,
     error: "Enter a search query between 1 and 300 characters.",
@@ -118,7 +137,10 @@ function invalidSearchQuery(query: string) {
   };
 }
 
-function searchConfigurationError(query: string, error: string) {
+function searchConfigurationError(
+  query: string,
+  error: string
+): SearchWebResult {
   return {
     query,
     error,
@@ -127,7 +149,9 @@ function searchConfigurationError(query: string, error: string) {
   };
 }
 
-async function searchWithTavily(normalizedQuery: string) {
+async function searchWithTavily(
+  normalizedQuery: string
+): Promise<SearchWebResult> {
   if (!hasUsableEnvValue(process.env.TAVILY_API_KEY)) {
     return {
       query: normalizedQuery,
@@ -180,7 +204,9 @@ async function searchWithTavily(normalizedQuery: string) {
   return { query: normalizedQuery, results };
 }
 
-async function searchWithExa(normalizedQuery: string) {
+async function searchWithExa(
+  normalizedQuery: string
+): Promise<SearchWebResult> {
   if (!hasUsableEnvValue(process.env.EXA_API_KEY)) {
     return {
       query: normalizedQuery,
@@ -244,7 +270,7 @@ function getExaContent(result: ExaResult) {
   return highlights || result.text || result.summary || "";
 }
 
-export async function searchWeb(query: string) {
+export async function searchWeb(query: string): Promise<SearchWebResult> {
   const normalizedQuery = query.trim();
 
   if (!normalizedQuery || normalizedQuery.length > 300) {

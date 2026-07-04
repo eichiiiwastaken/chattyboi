@@ -72,7 +72,7 @@ export function getLanguageModel(modelId: string) {
     if (!isProviderConfigured(provider)) {
       throw new Error("OpenRouter is missing OPENROUTER_API_KEY.");
     }
-    return openrouter(actualModelId);
+    return openrouter.chat(actualModelId);
   }
   if (provider === "openai") {
     if (!isProviderConfigured(provider)) {
@@ -106,7 +106,7 @@ export function getTitleModel() {
     if (!isProviderConfigured(provider)) {
       throw new Error("OpenRouter is missing OPENROUTER_API_KEY.");
     }
-    return openrouter(actualModelId);
+    return openrouter.chat(actualModelId);
   }
   if (provider === "openai") {
     if (!isProviderConfigured(provider)) {

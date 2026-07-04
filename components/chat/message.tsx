@@ -1081,7 +1081,10 @@ const PurePreviewMessage = ({
   return (
     <div
       className={cn(
-        "group/message w-full [contain-intrinsic-size:auto_160px] [content-visibility:auto]",
+        "group/message w-full",
+        // content-visibility breaks the selection rects used by the quote popover.
+        !onQuoteSelection &&
+          "[contain-intrinsic-size:auto_160px] [content-visibility:auto]",
         !isAssistant && "animate-[fade-up_0.25s_cubic-bezier(0.22,1,0.36,1)]"
       )}
       data-role={message.role}

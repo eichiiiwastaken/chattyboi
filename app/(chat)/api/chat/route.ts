@@ -30,6 +30,7 @@ import {
 import { getLanguageModel } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/reasoning";
 import { webSearch } from "@/lib/ai/tools/web-search";
+import { getWebSearchStepSettings } from "@/lib/ai/web-search-step";
 
 import { isProductionEnvironment } from "@/lib/constants";
 import {
@@ -548,16 +549,7 @@ export async function POST(request: Request) {
           toolChoice: canUseWebSearch ? "auto" : "none",
           prepareStep: canUseWebSearch
             ? ({ stepNumber }) =>
-                stepNumber === 0
-                  ? {
-                      activeTools: ["webSearch"],
-                      toolChoice: "auto",
-                    }
-                  : {
-                      activeTools: [],
-                      system: `${baseSystemPrompt}\n\nYou have already received the webSearch result for this turn. Do not call tools again. Answer the user's latest request now using the returned search results, and cite the source title and URL for current or external claims. If the results are insufficient, say what the results showed and what remains uncertain.`,
-                      toolChoice: "none",
-                    }
+                getWebSearchStepSettings({ baseSystemPrompt, stepNumber })
             : undefined,
           providerOptions: getReasoningProviderOptions({
             chatModel,

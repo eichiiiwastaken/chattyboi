@@ -7,6 +7,49 @@ type TavilyResult = {
   content?: string;
 };
 
+type ExaResult = {
+  title?: string;
+  url?: string;
+  text?: string;
+  highlights?: string[];
+  summary?: string;
+};
+
+type SearchProvider = "exa" | "tavily";
+
+const PLACEHOLDER_ENV_PREFIX = "replace-with-";
+const searchProviders = ["exa", "tavily"] as const;
+
+function hasUsableEnvValue(value: string | undefined) {
+  const trimmedValue = value?.trim();
+
+  return Boolean(
+    trimmedValue && !trimmedValue.startsWith(PLACEHOLDER_ENV_PREFIX)
+  );
+}
+
+function getConfiguredSearchProvider(): SearchProvider | null {
+  const configuredProvider = process.env.WEB_SEARCH_PROVIDER?.trim();
+
+  if (configuredProvider) {
+    if (searchProviders.includes(configuredProvider as SearchProvider)) {
+      return configuredProvider as SearchProvider;
+    }
+
+    return null;
+  }
+
+  if (hasUsableEnvValue(process.env.EXA_API_KEY)) {
+    return "exa";
+  }
+
+  if (hasUsableEnvValue(process.env.TAVILY_API_KEY)) {
+    return "tavily";
+  }
+
+  return null;
+}
+
 async function readSearchError(response: Response) {
   const fallback = `Search request failed (${response.status})`;
 
@@ -30,22 +73,29 @@ async function readSearchError(response: Response) {
   }
 }
 
-export async function searchWeb(query: string) {
-  const normalizedQuery = query.trim();
+function invalidSearchQuery(query: string) {
+  return {
+    query,
+    error: "Invalid search query",
+    status: 400,
+    results: [],
+  };
+}
 
-  if (!normalizedQuery || normalizedQuery.length > 300) {
-    return {
-      query,
-      error: "Invalid search query",
-      status: 400,
-      results: [],
-    };
-  }
+function searchNotConfigured(query: string) {
+  return {
+    query,
+    error: "Search is not configured",
+    status: 503,
+    results: [],
+  };
+}
 
-  if (!process.env.TAVILY_API_KEY) {
+async function searchWithTavily(normalizedQuery: string) {
+  if (!hasUsableEnvValue(process.env.TAVILY_API_KEY)) {
     return {
       query: normalizedQuery,
-      error: "Search is not configured",
+      error: "Tavily search is not configured",
       status: 503,
       results: [],
     };
@@ -63,7 +113,7 @@ export async function searchWeb(query: string) {
 
   if (!response.ok) {
     const error = await readSearchError(response);
-    console.error("Web search request failed", {
+    console.error("Tavily search request failed", {
       status: response.status,
       error,
     });
@@ -84,6 +134,82 @@ export async function searchWeb(query: string) {
   }));
 
   return { query: normalizedQuery, results };
+}
+
+async function searchWithExa(normalizedQuery: string) {
+  if (!hasUsableEnvValue(process.env.EXA_API_KEY)) {
+    return {
+      query: normalizedQuery,
+      error: "Exa search is not configured",
+      status: 503,
+      results: [],
+    };
+  }
+
+  const response = await fetch("https://api.exa.ai/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": process.env.EXA_API_KEY ?? "",
+    },
+    body: JSON.stringify({
+      query: normalizedQuery,
+      numResults: 5,
+      contents: {
+        highlights: true,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await readSearchError(response);
+    console.error("Exa search request failed", {
+      status: response.status,
+      error,
+    });
+
+    return {
+      query: normalizedQuery,
+      error,
+      status: response.status,
+      results: [],
+    };
+  }
+
+  const data = await response.json();
+  const results = (data.results || []).map((result: ExaResult) => ({
+    title: result.title ?? "",
+    url: result.url ?? "",
+    content: getExaContent(result),
+  }));
+
+  return { query: normalizedQuery, results };
+}
+
+function getExaContent(result: ExaResult) {
+  const highlights = result.highlights?.filter(Boolean).join("\n");
+
+  return highlights || result.text || result.summary || "";
+}
+
+export async function searchWeb(query: string) {
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery || normalizedQuery.length > 300) {
+    return invalidSearchQuery(query);
+  }
+
+  const provider = getConfiguredSearchProvider();
+
+  if (provider === "exa") {
+    return await searchWithExa(normalizedQuery);
+  }
+
+  if (provider === "tavily") {
+    return await searchWithTavily(normalizedQuery);
+  }
+
+  return searchNotConfigured(normalizedQuery);
 }
 
 export const webSearch = tool({

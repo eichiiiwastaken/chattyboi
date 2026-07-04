@@ -146,9 +146,20 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     const [firstLine, ...detailLines] = normalized.message.split("\n");
     const detail = normalized.detail ?? detailLines.join("\n").trim();
 
-    setGenerationError({
+    const nextError = {
       detail: detail || undefined,
       message: firstLine || "The assistant response failed.",
+    };
+
+    setGenerationError((currentError) => {
+      if (
+        currentError?.message === nextError.message &&
+        currentError.detail === nextError.detail
+      ) {
+        return currentError;
+      }
+
+      return nextError;
     });
   }, []);
 

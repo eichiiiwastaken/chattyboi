@@ -7,6 +7,15 @@ export function useScrollToBottom() {
   const isAtBottomRef = useRef(true);
   const isUserScrollingRef = useRef(false);
 
+  const updateIsAtBottom = useCallback((nextIsAtBottom: boolean) => {
+    if (isAtBottomRef.current === nextIsAtBottom) {
+      return;
+    }
+
+    isAtBottomRef.current = nextIsAtBottom;
+    setIsAtBottom(nextIsAtBottom);
+  }, []);
+
   useEffect(() => {
     isAtBottomRef.current = isAtBottom;
   }, [isAtBottom]);
@@ -42,8 +51,7 @@ export function useScrollToBottom() {
       clearTimeout(scrollTimeout);
 
       const atBottom = checkIfAtBottom();
-      setIsAtBottom(atBottom);
-      isAtBottomRef.current = atBottom;
+      updateIsAtBottom(atBottom);
 
       scrollTimeout = setTimeout(() => {
         isUserScrollingRef.current = false;
@@ -55,7 +63,7 @@ export function useScrollToBottom() {
       container.removeEventListener("scroll", handleScroll);
       clearTimeout(scrollTimeout);
     };
-  }, [checkIfAtBottom]);
+  }, [checkIfAtBottom, updateIsAtBottom]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -70,8 +78,7 @@ export function useScrollToBottom() {
             top: container.scrollHeight,
             behavior: "instant",
           });
-          setIsAtBottom(true);
-          isAtBottomRef.current = true;
+          updateIsAtBottom(true);
         });
       }
     };
@@ -94,23 +101,20 @@ export function useScrollToBottom() {
       mutationObserver.disconnect();
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [updateIsAtBottom]);
 
   function onViewportEnter() {
-    setIsAtBottom(true);
-    isAtBottomRef.current = true;
+    updateIsAtBottom(true);
   }
 
   function onViewportLeave() {
-    setIsAtBottom(false);
-    isAtBottomRef.current = false;
+    updateIsAtBottom(false);
   }
 
   const reset = useCallback(() => {
-    setIsAtBottom(true);
-    isAtBottomRef.current = true;
+    updateIsAtBottom(true);
     isUserScrollingRef.current = false;
-  }, []);
+  }, [updateIsAtBottom]);
 
   return {
     containerRef,

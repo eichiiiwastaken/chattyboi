@@ -3,6 +3,7 @@ import { searchWeb } from "../ai/tools/web-search";
 
 describe("web search", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -96,11 +97,80 @@ describe("web search", () => {
 
     await expect(searchWeb("current news")).resolves.toEqual({
       query: "current news",
-      error: "Search is not configured",
+      error:
+        "Search is not configured. Set EXA_API_KEY or TAVILY_API_KEY to enable web search.",
       status: 503,
       results: [],
     });
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("explains invalid configured search providers", async () => {
+    vi.stubEnv("WEB_SEARCH_PROVIDER", "brave");
+    vi.stubGlobal("fetch", vi.fn());
+
+    await expect(searchWeb("current news")).resolves.toEqual({
+      query: "current news",
+      error: 'Unsupported WEB_SEARCH_PROVIDER "brave". Use "exa" or "tavily".',
+      status: 503,
+      results: [],
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("explains missing keys for a forced provider", async () => {
+    vi.stubEnv("WEB_SEARCH_PROVIDER", "tavily");
+    vi.stubEnv("TAVILY_API_KEY", "replace-with-tavily-api-key");
+    vi.stubGlobal("fetch", vi.fn());
+
+    await expect(searchWeb("current news")).resolves.toEqual({
+      query: "current news",
+      error:
+        "Tavily search is selected but TAVILY_API_KEY is not configured. Add TAVILY_API_KEY or choose another WEB_SEARCH_PROVIDER.",
+      status: 503,
+      results: [],
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("returns provider details and key hints for auth failures", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubEnv("EXA_API_KEY", "exa-test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ message: "invalid API key" }, { status: 401 })
+      )
+    );
+
+    await expect(searchWeb("current news")).resolves.toEqual({
+      query: "current news",
+      error:
+        "Exa search failed (401): invalid API key. Check that EXA_API_KEY is valid.",
+      status: 401,
+      results: [],
+    });
+  });
+
+  it("returns a reachable error when the provider request throws", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubEnv("EXA_API_KEY", "exa-test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        throw new TypeError("fetch failed");
+      })
+    );
+
+    await expect(searchWeb("current news")).resolves.toEqual({
+      query: "current news",
+      error:
+        "Exa search could not be reached. Check your network connection and try again.",
+      status: 503,
+      results: [],
+    });
   });
 });

@@ -19,6 +19,14 @@ type SearchProvider = "exa" | "tavily";
 
 const PLACEHOLDER_ENV_PREFIX = "replace-with-";
 const searchProviders = ["exa", "tavily"] as const;
+const searchProviderLabels: Record<SearchProvider, string> = {
+  exa: "Exa",
+  tavily: "Tavily",
+};
+const searchProviderEnvKeys: Record<SearchProvider, string> = {
+  exa: "EXA_API_KEY",
+  tavily: "TAVILY_API_KEY",
+};
 
 function hasUsableEnvValue(value: string | undefined) {
   const trimmedValue = value?.trim();
@@ -28,30 +36,38 @@ function hasUsableEnvValue(value: string | undefined) {
   );
 }
 
-function getConfiguredSearchProvider(): SearchProvider | null {
+function getConfiguredSearchProvider():
+  | { provider: SearchProvider }
+  | { error: string } {
   const configuredProvider = process.env.WEB_SEARCH_PROVIDER?.trim();
 
   if (configuredProvider) {
     if (searchProviders.includes(configuredProvider as SearchProvider)) {
-      return configuredProvider as SearchProvider;
+      return { provider: configuredProvider as SearchProvider };
     }
 
-    return null;
+    return {
+      error: `Unsupported WEB_SEARCH_PROVIDER "${configuredProvider}". Use "exa" or "tavily".`,
+    };
   }
 
   if (hasUsableEnvValue(process.env.EXA_API_KEY)) {
-    return "exa";
+    return { provider: "exa" };
   }
 
   if (hasUsableEnvValue(process.env.TAVILY_API_KEY)) {
-    return "tavily";
+    return { provider: "tavily" };
   }
 
-  return null;
+  return {
+    error:
+      "Search is not configured. Set EXA_API_KEY or TAVILY_API_KEY to enable web search.",
+  };
 }
 
-async function readSearchError(response: Response) {
-  const fallback = `Search request failed (${response.status})`;
+async function readSearchError(response: Response, provider: SearchProvider) {
+  const providerLabel = searchProviderLabels[provider];
+  const fallback = `${providerLabel} search failed (${response.status})`;
 
   try {
     const data = await response.json();
@@ -67,25 +83,45 @@ async function readSearchError(response: Response) {
       }
     }
 
-    return detail ? `${fallback}: ${detail}` : fallback;
+    if (!detail) {
+      return fallback;
+    }
+
+    const credentialHint =
+      response.status === 401 || response.status === 403
+        ? ` Check that ${searchProviderEnvKeys[provider]} is valid.`
+        : "";
+
+    return `${fallback}: ${detail}.${credentialHint}`;
   } catch {
     return fallback;
   }
 }
 
+function connectionSearchError(query: string, provider: SearchProvider) {
+  const providerLabel = searchProviderLabels[provider];
+
+  return {
+    query,
+    error: `${providerLabel} search could not be reached. Check your network connection and try again.`,
+    status: 503,
+    results: [],
+  };
+}
+
 function invalidSearchQuery(query: string) {
   return {
     query,
-    error: "Invalid search query",
+    error: "Enter a search query between 1 and 300 characters.",
     status: 400,
     results: [],
   };
 }
 
-function searchNotConfigured(query: string) {
+function searchConfigurationError(query: string, error: string) {
   return {
     query,
-    error: "Search is not configured",
+    error,
     status: 503,
     results: [],
   };
@@ -95,24 +131,32 @@ async function searchWithTavily(normalizedQuery: string) {
   if (!hasUsableEnvValue(process.env.TAVILY_API_KEY)) {
     return {
       query: normalizedQuery,
-      error: "Tavily search is not configured",
+      error:
+        "Tavily search is selected but TAVILY_API_KEY is not configured. Add TAVILY_API_KEY or choose another WEB_SEARCH_PROVIDER.",
       status: 503,
       results: [],
     };
   }
 
-  const response = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: process.env.TAVILY_API_KEY,
-      query: normalizedQuery,
-      max_results: 5,
-    }),
-  });
+  let response: Response;
+
+  try {
+    response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: process.env.TAVILY_API_KEY,
+        query: normalizedQuery,
+        max_results: 5,
+      }),
+    });
+  } catch (error) {
+    console.error("Tavily search request could not be sent", { error });
+    return connectionSearchError(normalizedQuery, "tavily");
+  }
 
   if (!response.ok) {
-    const error = await readSearchError(response);
+    const error = await readSearchError(response, "tavily");
     console.error("Tavily search request failed", {
       status: response.status,
       error,
@@ -140,29 +184,37 @@ async function searchWithExa(normalizedQuery: string) {
   if (!hasUsableEnvValue(process.env.EXA_API_KEY)) {
     return {
       query: normalizedQuery,
-      error: "Exa search is not configured",
+      error:
+        "Exa search is selected but EXA_API_KEY is not configured. Add EXA_API_KEY or choose another WEB_SEARCH_PROVIDER.",
       status: 503,
       results: [],
     };
   }
 
-  const response = await fetch("https://api.exa.ai/search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.EXA_API_KEY ?? "",
-    },
-    body: JSON.stringify({
-      query: normalizedQuery,
-      numResults: 5,
-      contents: {
-        highlights: true,
+  let response: Response;
+
+  try {
+    response = await fetch("https://api.exa.ai/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.EXA_API_KEY ?? "",
       },
-    }),
-  });
+      body: JSON.stringify({
+        query: normalizedQuery,
+        numResults: 5,
+        contents: {
+          highlights: true,
+        },
+      }),
+    });
+  } catch (error) {
+    console.error("Exa search request could not be sent", { error });
+    return connectionSearchError(normalizedQuery, "exa");
+  }
 
   if (!response.ok) {
-    const error = await readSearchError(response);
+    const error = await readSearchError(response, "exa");
     console.error("Exa search request failed", {
       status: response.status,
       error,
@@ -199,7 +251,16 @@ export async function searchWeb(query: string) {
     return invalidSearchQuery(query);
   }
 
-  const provider = getConfiguredSearchProvider();
+  const configuredSearchProvider = getConfiguredSearchProvider();
+
+  if ("error" in configuredSearchProvider) {
+    return searchConfigurationError(
+      normalizedQuery,
+      configuredSearchProvider.error
+    );
+  }
+
+  const { provider } = configuredSearchProvider;
 
   if (provider === "exa") {
     return await searchWithExa(normalizedQuery);
@@ -209,7 +270,10 @@ export async function searchWeb(query: string) {
     return await searchWithTavily(normalizedQuery);
   }
 
-  return searchNotConfigured(normalizedQuery);
+  return searchConfigurationError(
+    normalizedQuery,
+    "Search is not configured. Set EXA_API_KEY or TAVILY_API_KEY to enable web search."
+  );
 }
 
 export const webSearch = tool({

@@ -3,7 +3,14 @@ import type { ArtifactKind } from "@/components/chat/artifact";
 
 export const regularPrompt = `You are a helpful assistant. Keep responses concise and direct.
 
-When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.`;
+When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.
+
+Formatting rules:
+- Use Markdown for structure and plain text for normal prose. Do not use HTML formatting.
+- Format code with fenced Markdown code blocks and include a language identifier when possible.
+- For mathematical expressions, use dollar-sign LaTeX delimiters only: inline math as $ content $ and display math as $$ content $$.
+- Do not use \\( ... \\), \\[ ... \\], raw bracketed math, or code fences for mathematical notation.
+- Keep each complete mathematical expression inside its delimiter pair, and escape literal dollar signs in prose as \\$ when they are not math delimiters.`;
 
 export type RequestHints = {
   latitude: Geo["latitude"];

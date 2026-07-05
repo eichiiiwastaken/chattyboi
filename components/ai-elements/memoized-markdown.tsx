@@ -3,6 +3,7 @@
 import type { ComponentProps, HTMLAttributes } from "react";
 import type { BundledLanguage } from "shiki";
 
+import { normalizeLatexDelimiters } from "@/lib/markdown/latex";
 import { cn } from "@/lib/utils";
 import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -96,6 +97,9 @@ type MemoizedMarkdownBlockProps = Omit<MemoizedMarkdownProps, "children" | "id">
 const MemoizedMarkdownBlock = memo(
   ({ content, ...props }: MemoizedMarkdownBlockProps) => {
     const [showLineNumbers, setShowLineNumbers] = useState(false);
+    const markdownContent = content.startsWith("```")
+      ? content
+      : normalizeLatexDelimiters(content);
 
     return (
       <ReactMarkdown
@@ -171,7 +175,7 @@ const MemoizedMarkdownBlock = memo(
         ]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
       >
-        {content}
+        {markdownContent}
       </ReactMarkdown>
     );
   }

@@ -472,17 +472,23 @@ function QuoteSelectionPopover({
   const rootRef = useRef<HTMLDivElement>(null);
   const selectionDragEndpointRef = useRef<SelectionDragEndpoint | null>(null);
   const selectionPointerStartRef = useRef<SelectionPointerStart | null>(null);
+  const isPointerSelectingRef = useRef(false);
   const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
   const [selection, setSelection] = useState<QuoteSelectionState | null>(null);
 
   const hideSelection = useCallback(() => {
     selectionDragEndpointRef.current = null;
     selectionPointerStartRef.current = null;
+    isPointerSelectingRef.current = false;
     setSelection(null);
   }, []);
 
   const updateSelection = useCallback(() => {
     if (!onQuote) {
+      return;
+    }
+
+    if (isPointerSelectingRef.current) {
       return;
     }
 
@@ -577,7 +583,12 @@ function QuoteSelectionPopover({
               top: event.clientY,
             }
           : null;
+      isPointerSelectingRef.current = Boolean(selectionPointerStartRef.current);
       selectionDragEndpointRef.current = null;
+
+      if (selectionPointerStartRef.current) {
+        setSelection(null);
+      }
     };
 
     const handlePointerUp = (event: PointerEvent) => {
@@ -599,6 +610,7 @@ function QuoteSelectionPopover({
             : "end";
 
       selectionPointerStartRef.current = null;
+      isPointerSelectingRef.current = false;
       selectionDragEndpointRef.current = {
         endpoint,
         timestamp: Date.now(),
@@ -606,12 +618,19 @@ function QuoteSelectionPopover({
       requestAnimationFrame(updateSelection);
     };
 
+    const handlePointerCancel = () => {
+      selectionPointerStartRef.current = null;
+      isPointerSelectingRef.current = false;
+    };
+
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerCancel);
 
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerCancel);
     };
   }, [onQuote, updateSelection]);
 

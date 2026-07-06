@@ -56,8 +56,8 @@ type TextPosition = {
 };
 
 const QUOTE_ACTION_GAP = 8;
-const QUOTE_ACTION_HEIGHT = 40;
-const QUOTE_ACTION_WIDTH = 56;
+const QUOTE_ACTION_HEIGHT = 34;
+const QUOTE_ACTION_WIDTH = 46;
 
 function getValueSizeHint(value: unknown): number {
   if (typeof value === "string") {
@@ -679,7 +679,7 @@ function QuoteSelectionPopover({
               <TooltipTrigger asChild>
                 <button
                   aria-label="Quote selection"
-                  className="fixed z-50 flex h-10 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
+                  className="fixed z-50 flex h-[34px] w-[46px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
                   onClick={quoteSelection}
                   onMouseDown={(event) => event.preventDefault()}
                   style={{ left: selection.left, top: selection.top }}

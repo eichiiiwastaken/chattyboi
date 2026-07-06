@@ -87,6 +87,18 @@ function setCookie(name: string, value: string) {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}`;
 }
 
+function modelFromId(modelId: string): ChatModel {
+  const [provider = "unknown", ...rest] = modelId.split("/");
+  const name = rest.length > 0 ? rest.join("/") : modelId;
+
+  return {
+    id: modelId,
+    name,
+    provider,
+    description: "",
+  };
+}
+
 function PureMultimodalInput({
   chatId,
   input,
@@ -826,9 +838,11 @@ function PureModelSelectorCompact({
 
   const selectedModel =
     activeModels.find((m: ChatModel) => m.id === selectedModelId) ??
-    activeModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
-    activeModels[0] ??
-    titleModel;
+    (dynamicModels === undefined
+      ? modelFromId(selectedModelId)
+      : (activeModels.find((m: ChatModel) => m.id === DEFAULT_CHAT_MODEL) ??
+        activeModels[0] ??
+        titleModel));
 
   useEffect(() => {
     if (

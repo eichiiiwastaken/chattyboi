@@ -80,6 +80,15 @@ function extractChatId(pathname: string): string | null {
   return match ? match[1] : null;
 }
 
+function getCookieValue(name: string): string | null {
+  const cookie = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")[1];
+
+  return cookie ? decodeURIComponent(cookie) : null;
+}
+
 export function getChatMessagesKey(chatId: string) {
   return `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/messages?chatId=${chatId}`;
 }
@@ -105,8 +114,13 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
 
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
 
-  const [currentModelId, setCurrentModelId] = useState(DEFAULT_CHAT_MODEL);
+  const [currentModelId, setCurrentModelIdState] = useState(DEFAULT_CHAT_MODEL);
   const currentModelIdRef = useRef(currentModelId);
+  const setCurrentModelId = useCallback((id: string) => {
+    currentModelIdRef.current = id;
+    setCurrentModelIdState(id);
+  }, []);
+
   useEffect(() => {
     currentModelIdRef.current = currentModelId;
   }, [currentModelId]);
@@ -351,17 +365,23 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }
   }, [chatId, clearGenerationError, isNewChat, setMessages]);
 
+  const hasLoadedCookieModelRef = useRef(false);
   useEffect(() => {
-    if (chatData && !isNewChat) {
-      const cookieModel = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("chat-model="))
-        ?.split("=")[1];
-      if (cookieModel) {
-        setCurrentModelId(decodeURIComponent(cookieModel));
-      }
+    if (hasLoadedCookieModelRef.current) {
+      return;
     }
-  }, [chatData, isNewChat]);
+
+    if (!isNewChat && !chatData) {
+      return;
+    }
+
+    hasLoadedCookieModelRef.current = true;
+
+    const cookieModel = getCookieValue("chat-model");
+    if (cookieModel) {
+      setCurrentModelId(cookieModel);
+    }
+  }, [chatData, isNewChat, setCurrentModelId]);
 
   const hasAppendedQueryRef = useRef(false);
   useEffect(() => {
@@ -390,7 +410,6 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       const urlDefaultModel = settings?.defaultSearchModel;
       if (urlDefaultModel) {
         setCurrentModelId(urlDefaultModel);
-        currentModelIdRef.current = urlDefaultModel;
       }
 
       router.replace(
@@ -420,6 +439,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     settingsData,
     settingsError,
     setReasoningEffort,
+    setCurrentModelId,
   ]);
 
   useAutoResume({
@@ -500,6 +520,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       settings,
       isOneTimeChat,
       setReasoningEffort,
+      setCurrentModelId,
     ]
   );
 

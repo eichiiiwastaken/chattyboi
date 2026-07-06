@@ -1,7 +1,12 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import type { ComponentProps, ReactNode } from "react";
+import {
+  createContext,
+  type ComponentProps,
+  type ReactNode,
+  useContext,
+} from "react";
 
 import {
   Command,
@@ -18,7 +23,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import type { Popover as PopoverPrimitive } from "radix-ui";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -52,17 +64,29 @@ const SVGL_LOGO_MAP: Partial<Record<string, SvglRoute>> = {
   v0: { dark: "https://svgl.app/library/vercel_dark.svg", light: "https://svgl.app/library/vercel.svg" },
 };
 
-export type ModelSelectorProps = React.ComponentProps<typeof PopoverPrimitive.Root>;
+const ModelSelectorContext = createContext({ isMobile: false });
 
-export const ModelSelector = (props: ModelSelectorProps) => (
-  <Popover {...props} />
-);
+export type ModelSelectorProps = ComponentProps<typeof Popover>;
+
+export const ModelSelector = (props: ModelSelectorProps) => {
+  const isMobile = useIsMobile();
+  const Root = isMobile ? Sheet : Popover;
+
+  return (
+    <ModelSelectorContext.Provider value={{ isMobile }}>
+      <Root {...props} />
+    </ModelSelectorContext.Provider>
+  );
+};
 
 export type ModelSelectorTriggerProps = ComponentProps<typeof PopoverTrigger>;
 
-export const ModelSelectorTrigger = (props: ModelSelectorTriggerProps) => (
-  <PopoverTrigger {...props} />
-);
+export const ModelSelectorTrigger = (props: ModelSelectorTriggerProps) => {
+  const { isMobile } = useContext(ModelSelectorContext);
+  const Trigger = isMobile ? SheetTrigger : PopoverTrigger;
+
+  return <Trigger {...props} />;
+};
 
 export type ModelSelectorContentProps = ComponentProps<typeof PopoverContent> & {
   title?: ReactNode;
@@ -71,44 +95,71 @@ export type ModelSelectorContentProps = ComponentProps<typeof PopoverContent> & 
 export const ModelSelectorContent = ({
   className,
   children,
-  title: _title,
+  title = "Choose model",
+  onOpenAutoFocus,
   ...props
-}: ModelSelectorContentProps) => (
-  <PopoverContent
-    align="start"
-    className={cn(
-      "w-[280px] max-w-[calc(100vw-1rem)] p-0 rounded-xl border border-border/60 bg-card/95 backdrop-blur-xl shadow-[var(--shadow-float)]",
-      className
-    )}
-    side="top"
-    sideOffset={8}
-    {...props}
-  >
-    <Command className="**:data-[slot=command-input-wrapper]:h-auto">
-      {children}
-    </Command>
-  </PopoverContent>
-);
+}: ModelSelectorContentProps) => {
+  const { isMobile } = useContext(ModelSelectorContext);
+  const handleOpenAutoFocus: NonNullable<
+    ModelSelectorContentProps["onOpenAutoFocus"]
+  > = (event) => {
+    event.preventDefault();
+    onOpenAutoFocus?.(event);
+  };
+
+  if (isMobile) {
+    return (
+      <SheetContent
+        className={cn(
+          "inset-x-0 bottom-0 top-auto !h-[82dvh] !w-full max-w-none overflow-hidden rounded-t-2xl border-t border-border/30 bg-card p-0 pb-[env(safe-area-inset-bottom)] text-card-foreground sm:!h-[76dvh]",
+          className
+        )}
+        onOpenAutoFocus={handleOpenAutoFocus}
+        showCloseButton={false}
+        side="bottom"
+      >
+        <SheetHeader className="sr-only">
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription>Search and choose a model.</SheetDescription>
+        </SheetHeader>
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-foreground/20" />
+        <Command className="min-h-0 flex-1 rounded-none bg-transparent p-1 pt-2 **:data-[slot=command-input-wrapper]:h-auto">
+          {children}
+        </Command>
+      </SheetContent>
+    );
+  }
+
+  return (
+    <PopoverContent
+      align="start"
+      className={cn(
+        "w-[280px] max-w-[calc(100vw-1rem)] p-0 rounded-xl border border-border/60 bg-card/95 backdrop-blur-xl shadow-[var(--shadow-float)]",
+        className
+      )}
+      onOpenAutoFocus={handleOpenAutoFocus}
+      side="top"
+      sideOffset={8}
+      {...props}
+    >
+      <Command className="**:data-[slot=command-input-wrapper]:h-auto">
+        {children}
+      </Command>
+    </PopoverContent>
+  );
+};
 
 export type ModelSelectorInputProps = ComponentProps<typeof CommandInput>;
 
 export const ModelSelectorInput = ({
   className,
   ...props
-}: ModelSelectorInputProps) => {
-  const isMobile = useIsMobile();
-
-  if (isMobile) {
-    return null;
-  }
-
-  return (
-    <CommandInput
-      className={cn("h-auto py-2.5 text-[13px]", className)}
-      {...props}
-    />
-  );
-};
+}: ModelSelectorInputProps) => (
+  <CommandInput
+    className={cn("h-auto py-2.5 text-[13px]", className)}
+    {...props}
+  />
+);
 
 export type ModelSelectorListProps = ComponentProps<typeof CommandList>;
 

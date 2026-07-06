@@ -3,6 +3,7 @@ import type { UseChatHelpers } from "@ai-sdk/react";
 import { AlertTriangleIcon, QuoteIcon, RefreshCcwIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { GenerationError } from "@/hooks/use-active-chat";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
@@ -471,6 +472,7 @@ function QuoteSelectionPopover({
   const rootRef = useRef<HTMLDivElement>(null);
   const selectionDragEndpointRef = useRef<SelectionDragEndpoint | null>(null);
   const selectionPointerStartRef = useRef<SelectionPointerStart | null>(null);
+  const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
   const [selection, setSelection] = useState<QuoteSelectionState | null>(null);
 
   const hideSelection = useCallback(() => {
@@ -547,6 +549,8 @@ function QuoteSelectionPopover({
     if (!onQuote) {
       return;
     }
+
+    setPortalElement(document.body);
 
     document.addEventListener("selectionchange", updateSelection);
 
@@ -639,30 +643,36 @@ function QuoteSelectionPopover({
     return children;
   }
 
+  const selectionAction =
+    selection && portalElement
+      ? createPortal(
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  aria-label="Quote selection"
+                  className="fixed z-50 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
+                  onClick={quoteSelection}
+                  onMouseDown={(event) => event.preventDefault()}
+                  style={{ left: selection.left, top: selection.top }}
+                  type="button"
+                >
+                  <QuoteIcon className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={6}>
+                <p>Quote selection</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>,
+          portalElement
+        )
+      : null;
+
   return (
     <div className={className} ref={rootRef}>
       {children}
-      {selection && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                aria-label="Quote selection"
-                className="fixed z-50 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
-                onClick={quoteSelection}
-                onMouseDown={(event) => event.preventDefault()}
-                style={{ left: selection.left, top: selection.top }}
-                type="button"
-              >
-                <QuoteIcon className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent sideOffset={6}>
-              <p>Quote selection</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+      {selectionAction}
     </div>
   );
 }

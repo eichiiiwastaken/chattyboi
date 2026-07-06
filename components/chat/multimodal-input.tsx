@@ -39,6 +39,7 @@ import {
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
 import { useActiveChat } from "@/hooks/use-active-chat";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { MODELS_API_PATH } from "@/lib/ai/model-api";
 import {
   type ChatModel,
@@ -805,6 +806,7 @@ function PureModelSelectorCompact({
   onModelChange?: (modelId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const { data: modelsData } = useSWR(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}${MODELS_API_PATH}`,
     (url: string) => fetch(url, { cache: "no-store" }).then((r) => r.json()),
@@ -915,6 +917,9 @@ function PureModelSelectorCompact({
                         onModelChange?.(model.id);
                         setCookie("chat-model", model.id);
                         setOpen(false);
+                        if (isMobile) {
+                          return;
+                        }
                         setTimeout(() => {
                           document
                             .querySelector<HTMLTextAreaElement>(

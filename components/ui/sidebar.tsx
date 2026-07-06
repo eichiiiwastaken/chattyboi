@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -22,7 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { PanelLeftIcon } from "lucide-react"
+import { PanelLeftIcon, XIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -70,6 +71,13 @@ function SidebarProvider({
 
   const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
+
+  React.useEffect(() => {
+    if (!isMobile) {
+      setOpenMobile(false)
+    }
+  }, [isMobile])
+
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value
@@ -179,7 +187,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="inset-x-0 bottom-0 top-auto !h-[82dvh] w-full rounded-t-2xl border-t border-border/30 bg-sidebar p-0 pb-[env(safe-area-inset-bottom)] text-sidebar-foreground sm:!h-[76dvh] [&>button]:hidden"
+          className="inset-x-0 bottom-0 top-auto !h-[82dvh] w-full overflow-hidden rounded-t-2xl border-t border-border/30 bg-sidebar p-0 pb-[env(safe-area-inset-bottom)] text-sidebar-foreground sm:!h-[76dvh]"
           showCloseButton={false}
           side="bottom"
         >
@@ -187,8 +195,20 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-sidebar-foreground/20" />
-          <div className="flex h-full w-full flex-col overflow-y-auto pt-2">{children}</div>
+          <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-sidebar-foreground/20" />
+          <SheetClose asChild>
+            <Button
+              aria-label="Close sidebar"
+              className="absolute right-3 top-3 z-10 text-sidebar-foreground/60 hover:text-sidebar-foreground"
+              size="icon-sm"
+              variant="ghost"
+            >
+              <XIcon className="size-4" />
+            </Button>
+          </SheetClose>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pt-2">
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )

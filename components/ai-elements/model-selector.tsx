@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { Popover as PopoverPrimitive } from "radix-ui";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 type SvglRoute =
@@ -76,7 +77,7 @@ export const ModelSelectorContent = ({
   <PopoverContent
     align="start"
     className={cn(
-      "w-[280px] p-0 rounded-xl border border-border/60 bg-card/95 backdrop-blur-xl shadow-[var(--shadow-float)]",
+      "w-[280px] max-w-[calc(100vw-1rem)] p-0 rounded-xl border border-border/60 bg-card/95 backdrop-blur-xl shadow-[var(--shadow-float)]",
       className
     )}
     side="top"
@@ -94,14 +95,31 @@ export type ModelSelectorInputProps = ComponentProps<typeof CommandInput>;
 export const ModelSelectorInput = ({
   className,
   ...props
-}: ModelSelectorInputProps) => (
-  <CommandInput className={cn("h-auto py-2.5 text-[13px]", className)} {...props} />
-);
+}: ModelSelectorInputProps) => {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return null;
+  }
+
+  return (
+    <CommandInput
+      className={cn("h-auto py-2.5 text-[13px]", className)}
+      {...props}
+    />
+  );
+};
 
 export type ModelSelectorListProps = ComponentProps<typeof CommandList>;
 
-export const ModelSelectorList = ({ className, ...props }: ModelSelectorListProps) => (
-  <CommandList className={cn("max-h-[280px]", className)} {...props} />
+export const ModelSelectorList = ({
+  className,
+  ...props
+}: ModelSelectorListProps) => (
+  <CommandList
+    className={cn("max-h-[min(280px,55dvh)] overscroll-contain", className)}
+    {...props}
+  />
 );
 
 export type ModelSelectorEmptyProps = ComponentProps<typeof CommandEmpty>;

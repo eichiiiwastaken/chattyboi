@@ -55,7 +55,9 @@ type TextPosition = {
   textNode: Text;
 };
 
-const QUOTE_ACTION_HALF_SIZE = 18;
+const QUOTE_ACTION_GAP = 8;
+const QUOTE_ACTION_HEIGHT = 56;
+const QUOTE_ACTION_WIDTH = 80;
 
 function getValueSizeHint(value: unknown): number {
   if (typeof value === "string") {
@@ -448,14 +450,21 @@ function getSelectedTextEndpointRect(
 function getSelectionPosition(rect: DOMRect, endpoint: SelectionEndpoint) {
   const horizontalAnchor =
     endpoint === "start"
-      ? rect.left - QUOTE_ACTION_HALF_SIZE
-      : rect.right + QUOTE_ACTION_HALF_SIZE;
+      ? rect.left + QUOTE_ACTION_WIDTH / 2
+      : rect.right - QUOTE_ACTION_WIDTH / 2;
+  const verticalAnchor =
+    endpoint === "start"
+      ? rect.top - QUOTE_ACTION_GAP - QUOTE_ACTION_HEIGHT / 2
+      : rect.bottom + QUOTE_ACTION_GAP + QUOTE_ACTION_HEIGHT / 2;
 
   return {
-    left: Math.min(Math.max(horizontalAnchor, 28), window.innerWidth - 28),
+    left: Math.min(
+      Math.max(horizontalAnchor, QUOTE_ACTION_WIDTH / 2 + 8),
+      window.innerWidth - QUOTE_ACTION_WIDTH / 2 - 8
+    ),
     top: Math.min(
-      Math.max(rect.top + rect.height / 2, 18),
-      window.innerHeight - 18
+      Math.max(verticalAnchor, QUOTE_ACTION_HEIGHT / 2 + 8),
+      window.innerHeight - QUOTE_ACTION_HEIGHT / 2 - 8
     ),
   };
 }
@@ -670,7 +679,7 @@ function QuoteSelectionPopover({
               <TooltipTrigger asChild>
                 <button
                   aria-label="Quote selection"
-                  className="fixed z-50 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
+                  className="fixed z-50 flex h-14 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-popover text-popover-foreground shadow-[var(--shadow-float)] backdrop-blur transition-transform duration-150 hover:scale-105 hover:bg-muted"
                   onClick={quoteSelection}
                   onMouseDown={(event) => event.preventDefault()}
                   style={{ left: selection.left, top: selection.top }}

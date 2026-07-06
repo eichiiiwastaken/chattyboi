@@ -49,7 +49,7 @@ function PureChatHeader({
           <Switch
             aria-label="One-time chat"
             checked={isOneTimeChat}
-            className="h-4 w-7 border p-0.5 [&>span]:size-3 [&>span[data-state=checked]]:translate-x-3"
+            className="h-4 w-7 border p-0.5 [&>span]:size-3 [&>span[data-state=checked]]:translate-x-2.5"
             onCheckedChange={(checked) => {
               router.push(
                 checked

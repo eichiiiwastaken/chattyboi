@@ -36,6 +36,7 @@ export const chat = pgTable("Chat", {
     .notNull()
     .default("private"),
   pinnedAt: timestamp("pinnedAt"),
+  lastModelId: text("lastModelId"),
 });
 
 export type Chat = InferSelectModel<typeof chat>;

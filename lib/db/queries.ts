@@ -116,11 +116,13 @@ export async function saveChat({
   userId,
   title,
   visibility,
+  lastModelId,
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
+  lastModelId?: string | null;
 }) {
   try {
     return await db.insert(chat).values({
@@ -129,6 +131,7 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      lastModelId: lastModelId ?? null,
     });
   } catch (_error) {
     throw new ChatbotError("bad_request:database", "Failed to save chat");
@@ -144,6 +147,7 @@ export async function saveChatWithMessages({
     userId: string;
     title: string;
     visibility: VisibilityType;
+    lastModelId?: string | null;
   };
   messages: DBMessage[];
 }) {
@@ -157,6 +161,7 @@ export async function saveChatWithMessages({
           userId: chatInput.userId,
           title: chatInput.title,
           visibility: chatInput.visibility,
+          lastModelId: chatInput.lastModelId ?? null,
         })
         .returning();
 
@@ -653,6 +658,26 @@ export async function updateChatTitleById({
     return await db.update(chat).set({ title }).where(eq(chat.id, chatId));
   } catch (_error) {
     return;
+  }
+}
+
+export async function updateChatLastModelById({
+  chatId,
+  lastModelId,
+}: {
+  chatId: string;
+  lastModelId: string;
+}) {
+  try {
+    return await db
+      .update(chat)
+      .set({ lastModelId })
+      .where(eq(chat.id, chatId));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to update chat last model by id"
+    );
   }
 }
 

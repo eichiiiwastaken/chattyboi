@@ -42,6 +42,7 @@ import {
   getMessagesByChatId,
   saveChat,
   saveMessages,
+  updateChatLastModelById,
   updateChatTitleById,
   updateMessage,
 } from "@/lib/db/queries";
@@ -323,6 +324,7 @@ export async function POST(request: Request) {
         userId: session.user.id,
         title: "New chat",
         visibility: selectedVisibilityType,
+        lastModelId: chatModel,
       });
       await publishChatEvent({
         userId: session.user.id,
@@ -334,6 +336,10 @@ export async function POST(request: Request) {
         },
       });
       shouldGenerateTitle = true;
+    }
+
+    if (chat && !isOneTimeChat && chat.lastModelId !== chatModel) {
+      await updateChatLastModelById({ chatId: id, lastModelId: chatModel });
     }
 
     let uiMessages: ChatMessage[];

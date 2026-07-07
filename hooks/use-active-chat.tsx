@@ -39,6 +39,14 @@ export type GenerationError = {
   detail?: string;
 };
 
+type ChatData = {
+  messages: ChatMessage[];
+  visibility: VisibilityType;
+  userId: string | null;
+  isReadonly: boolean;
+  lastModelId: string | null;
+};
+
 type ActiveChatContextValue = {
   chatId: string;
   messages: ChatMessage[];
@@ -177,7 +185,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const { data: chatData, isLoading } = useSWR(
+  const { data: chatData, isLoading } = useSWR<ChatData>(
     isNewChat ? null : getChatMessagesKey(chatId),
     fetcher,
     { revalidateOnFocus: false }
@@ -365,23 +373,30 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }
   }, [chatId, clearGenerationError, isNewChat, setMessages]);
 
-  const hasLoadedCookieModelRef = useRef(false);
+  const lastAppliedModelForChatRef = useRef<string | null>(null);
   useEffect(() => {
-    if (hasLoadedCookieModelRef.current) {
+    if (lastAppliedModelForChatRef.current === chatId) {
       return;
     }
 
-    if (!isNewChat && !chatData) {
+    if (isNewChat) {
+      lastAppliedModelForChatRef.current = chatId;
+      const cookieModel = getCookieValue("chat-model");
+      if (cookieModel) {
+        setCurrentModelId(cookieModel);
+      }
       return;
     }
 
-    hasLoadedCookieModelRef.current = true;
-
-    const cookieModel = getCookieValue("chat-model");
-    if (cookieModel) {
-      setCurrentModelId(cookieModel);
+    if (!chatData) {
+      return;
     }
-  }, [chatData, isNewChat, setCurrentModelId]);
+
+    lastAppliedModelForChatRef.current = chatId;
+    if (chatData.lastModelId) {
+      setCurrentModelId(chatData.lastModelId);
+    }
+  }, [chatData, chatId, isNewChat, setCurrentModelId]);
 
   const hasAppendedQueryRef = useRef(false);
   useEffect(() => {

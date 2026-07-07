@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangleIcon, CheckIcon, Copy } from "lucide-react";
+import { AlertTriangleIcon, ChevronDownIcon, Copy } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -9,19 +9,16 @@ import { useCopyToClipboard } from "usehooks-ts";
 import {
   ModelSelector,
   ModelSelectorContent,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
   ModelSelectorLogo,
   ModelSelectorName,
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
+import { ModelPickerContent } from "@/components/chat/model-picker";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { MODELS_API_PATH } from "@/lib/ai/model-api";
-import type { ChatModel } from "@/lib/ai/models";
+import type { ChatModel, ModelCapabilities } from "@/lib/ai/models";
 
 function ModelSelectorCompact({
   selectedModelId,
@@ -38,6 +35,8 @@ function ModelSelectorCompact({
   );
 
   const dynamicModels: ChatModel[] | undefined = modelsData?.models;
+  const capabilities: Record<string, ModelCapabilities> | undefined =
+    modelsData?.capabilities ?? modelsData;
   const activeModels = dynamicModels ?? [];
 
   const selectedModel =
@@ -60,7 +59,7 @@ function ModelSelectorCompact({
     );
   }
 
-  const [provider] = selectedModel.id.split("/");
+  const provider = selectedModel.provider || selectedModel.id.split("/")[0];
 
   return (
     <ModelSelector onOpenChange={setOpen} open={open}>
@@ -71,60 +70,22 @@ function ModelSelectorCompact({
         >
           {provider && <ModelSelectorLogo provider={provider} />}
           <ModelSelectorName>{selectedModel.name}</ModelSelectorName>
-          <span className="ml-auto text-muted-foreground text-xs">▼</span>
+          <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
         </Button>
       </ModelSelectorTrigger>
-      <ModelSelectorContent>
-        <ModelSelectorInput placeholder="Search models..." />
-        <ModelSelectorList>
-          {(() => {
-            const allModels = dynamicModels ?? [];
-            const grouped: Record<string, ChatModel[]> = {};
-            for (const model of allModels) {
-              const key = model.provider;
-              if (!grouped[key]) {
-                grouped[key] = [];
-              }
-              grouped[key].push(model);
-            }
-
-            const sortedKeys = Object.keys(grouped).sort((a, b) =>
-              a.localeCompare(b)
-            );
-
-            const providerNames: Record<string, string> = {
-              opencodego: "OpenCodeGo",
-              openrouter: "OpenRouter",
-            };
-
-            return sortedKeys.map((key) => (
-              <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
-                {grouped[key].map((model) => {
-                  const logoProvider = model.id.split("/")[0];
-                  return (
-                    <ModelSelectorItem
-                      className="flex w-full"
-                      key={model.id}
-                      onSelect={() => {
-                        onModelChange(model.id);
-                        setOpen(false);
-                      }}
-                      value={model.id}
-                    >
-                      {model.id === selectedModel.id ? (
-                        <CheckIcon className="size-4 shrink-0 text-foreground" />
-                      ) : (
-                        <span className="size-4 shrink-0" />
-                      )}
-                      <ModelSelectorLogo provider={logoProvider} />
-                      <ModelSelectorName>{model.name}</ModelSelectorName>
-                    </ModelSelectorItem>
-                  );
-                })}
-              </ModelSelectorGroup>
-            ));
-          })()}
-        </ModelSelectorList>
+      <ModelSelectorContent
+        className="w-[390px] overflow-hidden"
+        commandProps={{ className: "p-0", shouldFilter: false }}
+      >
+        <ModelPickerContent
+          capabilities={capabilities}
+          models={activeModels}
+          onSelectModel={(modelId) => {
+            onModelChange(modelId);
+            setOpen(false);
+          }}
+          selectedModelId={selectedModel.id}
+        />
       </ModelSelectorContent>
     </ModelSelector>
   );

@@ -6,10 +6,8 @@ import equal from "fast-deep-equal";
 import {
   AlertTriangleIcon,
   BrainIcon,
-  CheckIcon,
-  EyeIcon,
+  ChevronDownIcon,
   GaugeIcon,
-  WrenchIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -30,10 +28,6 @@ import { useLocalStorage, useWindowSize } from "usehooks-ts";
 import {
   ModelSelector,
   ModelSelectorContent,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
   ModelSelectorLogo,
   ModelSelectorName,
   ModelSelectorTrigger,
@@ -72,6 +66,7 @@ import {
   T3GlobeOffIcon,
   T3SendIcon,
 } from "./icons";
+import { ModelPickerContent } from "./model-picker";
 import { PreviewAttachment } from "./preview-attachment";
 import { getChatHistoryPaginationKey } from "./sidebar-history";
 import {
@@ -873,105 +868,43 @@ function PureModelSelectorCompact({
           <ModelSelectorName>
             {hasConfiguredModels ? selectedModel.name : "No models configured"}
           </ModelSelectorName>
+          <ChevronDownIcon className="size-3.5 shrink-0 opacity-60" />
         </Button>
       </ModelSelectorTrigger>
-      <ModelSelectorContent>
-        {hasConfiguredModels && (
-          <ModelSelectorInput placeholder="Search models..." />
-        )}
-        <ModelSelectorList>
-          {!hasConfiguredModels && (
-            <div className="px-3 py-3 text-[13px]">
-              <p className="font-medium text-foreground">
-                No configured models
-              </p>
-              <p className="mt-1 text-muted-foreground leading-5">
-                Add OPENCODE_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or
-                AI_GATEWAY_API_KEY.
-              </p>
-            </div>
-          )}
-          {(() => {
-            const allModels = activeModels;
-            const curatedIds = new Set(allModels.map((m) => m.id));
-
-            const grouped: Record<
-              string,
-              { model: ChatModel; curated: boolean }[]
-            > = {};
-            for (const model of allModels) {
-              const key = model.provider;
-              if (!grouped[key]) {
-                grouped[key] = [];
+      <ModelSelectorContent
+        className="w-[390px] overflow-hidden"
+        commandProps={{ className: "p-0", shouldFilter: false }}
+      >
+        {hasConfiguredModels ? (
+          <ModelPickerContent
+            capabilities={capabilities}
+            models={activeModels}
+            onSelectModel={(modelId) => {
+              onModelChange?.(modelId);
+              setCookie("chat-model", modelId);
+              setOpen(false);
+              if (isMobile) {
+                return;
               }
-              grouped[key].push({ model, curated: curatedIds.has(model.id) });
-            }
-
-            const sortedKeys = Object.keys(grouped).sort((a, b) => {
-              return a.localeCompare(b);
-            });
-
-            const providerNames: Record<string, string> = {
-              opencodego: "OpenCodeGo",
-              openrouter: "OpenRouter",
-            };
-
-            return sortedKeys.map((key) => (
-              <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
-                {grouped[key].map(({ model, curated }) => {
-                  const logoProvider = (model.id ?? "").split("/")[0];
-                  return (
-                    <ModelSelectorItem
-                      className="flex w-full"
-                      key={model.id}
-                      onSelect={() => {
-                        if (!curated) {
-                          return;
-                        }
-                        onModelChange?.(model.id);
-                        setCookie("chat-model", model.id);
-                        setOpen(false);
-                        if (isMobile) {
-                          return;
-                        }
-                        setTimeout(() => {
-                          document
-                            .querySelector<HTMLTextAreaElement>(
-                              "[data-testid='multimodal-input']"
-                            )
-                            ?.focus();
-                        }, 50);
-                      }}
-                      value={model.id}
-                    >
-                      {model.id === selectedModel.id ? (
-                        <CheckIcon className="size-4 shrink-0 text-foreground" />
-                      ) : (
-                        <span className="size-4 shrink-0" />
-                      )}
-                      <ModelSelectorLogo provider={logoProvider} />
-                      <ModelSelectorName>{model.name}</ModelSelectorName>
-                      <div className="ml-auto flex items-center gap-2 text-foreground/70">
-                        {capabilities?.[model.id]?.tools && (
-                          <WrenchIcon className="size-3.5" />
-                        )}
-                        {capabilities?.[model.id]?.vision && (
-                          <EyeIcon className="size-3.5" />
-                        )}
-                        {capabilities?.[model.id]?.file && (
-                          <T3AttachIcon size={14} />
-                        )}
-                        {capabilities?.[model.id]?.reasoning && (
-                          <BrainIcon className="size-3.5" />
-                        )}
-                      </div>
-                    </ModelSelectorItem>
-                  );
-                })}
-              </ModelSelectorGroup>
-            ));
-          })()}
-        </ModelSelectorList>
+              setTimeout(() => {
+                document
+                  .querySelector<HTMLTextAreaElement>(
+                    "[data-testid='multimodal-input']"
+                  )
+                  ?.focus();
+              }, 50);
+            }}
+            selectedModelId={selectedModel.id}
+          />
+        ) : (
+          <div className="px-3 py-3 text-[13px]">
+            <p className="font-medium text-foreground">No configured models</p>
+            <p className="mt-1 text-muted-foreground leading-5">
+              Add OPENCODE_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, or
+              AI_GATEWAY_API_KEY.
+            </p>
+          </div>
+        )}
       </ModelSelectorContent>
     </ModelSelector>
   );

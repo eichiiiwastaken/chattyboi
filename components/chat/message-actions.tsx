@@ -1,11 +1,4 @@
-import {
-  BrainIcon,
-  CheckIcon,
-  EyeIcon,
-  InfoIcon,
-  RefreshCcwIcon,
-  WrenchIcon,
-} from "lucide-react";
+import { InfoIcon, RefreshCcwIcon } from "lucide-react";
 import { memo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -13,12 +6,6 @@ import { useCopyToClipboard } from "usehooks-ts";
 import {
   ModelSelector,
   ModelSelectorContent,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorLogo,
-  ModelSelectorName,
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
 import { Button } from "@/components/ui/button";
@@ -36,8 +23,9 @@ import {
   MessageAction as Action,
   MessageActions as Actions,
 } from "../ai-elements/message";
-import { CopyIcon, PencilEditIcon, T3AttachIcon } from "./icons";
+import { CopyIcon, PencilEditIcon } from "./icons";
 import { MessageStats } from "./message-stats";
+import { ModelPickerContent } from "./model-picker";
 
 export function PureMessageActions({
   chatId: _chatId,
@@ -145,22 +133,6 @@ function RetryMenu({
   const capabilities: Record<string, ModelCapabilities> | undefined =
     modelsData?.capabilities ?? modelsData;
   const allModels: ChatModel[] = modelsData?.models ?? [];
-  const curatedIds = new Set(allModels.map((model) => model.id));
-  const grouped: Record<string, { model: ChatModel; curated: boolean }[]> = {};
-
-  for (const model of allModels) {
-    const key = model.provider;
-    if (!grouped[key]) {
-      grouped[key] = [];
-    }
-    grouped[key].push({ model, curated: curatedIds.has(model.id) });
-  }
-
-  const sortedKeys = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
-  const providerNames: Record<string, string> = {
-    opencodego: "OpenCodeGo",
-    openrouter: "OpenRouter",
-  };
 
   return (
     <ModelSelector onOpenChange={setOpen} open={open}>
@@ -185,7 +157,10 @@ function RetryMenu({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <ModelSelectorContent className="w-[300px]">
+      <ModelSelectorContent
+        className="w-[390px] overflow-hidden"
+        commandProps={{ className: "p-0", shouldFilter: false }}
+      >
         <div className="border-border/50 border-b p-1.5">
           <button
             className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
@@ -205,54 +180,15 @@ function RetryMenu({
             <span className="h-px flex-1 bg-border/60" />
           </div>
         </div>
-        <ModelSelectorInput placeholder="Search models..." />
-        <ModelSelectorList>
-          {sortedKeys.map((key) => (
-            <ModelSelectorGroup heading={providerNames[key] ?? key} key={key}>
-              {grouped[key].map(({ model, curated }) => {
-                const logoProvider = (model.id ?? "").split("/")[0];
-                return (
-                  <ModelSelectorItem
-                    className="flex w-full"
-                    key={model.id}
-                    onSelect={() => {
-                      if (!curated) {
-                        return;
-                      }
-                      setOpen(false);
-                      Promise.resolve(onRetry(message, model.id)).catch(
-                        () => undefined
-                      );
-                    }}
-                    value={model.id}
-                  >
-                    {model.id === selectedModelId ? (
-                      <CheckIcon className="size-4 shrink-0 text-foreground" />
-                    ) : (
-                      <span className="size-4 shrink-0" />
-                    )}
-                    <ModelSelectorLogo provider={logoProvider} />
-                    <ModelSelectorName>{model.name}</ModelSelectorName>
-                    <div className="ml-auto flex items-center gap-2 text-foreground/70">
-                      {capabilities?.[model.id]?.tools && (
-                        <WrenchIcon className="size-3.5" />
-                      )}
-                      {capabilities?.[model.id]?.vision && (
-                        <EyeIcon className="size-3.5" />
-                      )}
-                      {capabilities?.[model.id]?.file && (
-                        <T3AttachIcon size={14} />
-                      )}
-                      {capabilities?.[model.id]?.reasoning && (
-                        <BrainIcon className="size-3.5" />
-                      )}
-                    </div>
-                  </ModelSelectorItem>
-                );
-              })}
-            </ModelSelectorGroup>
-          ))}
-        </ModelSelectorList>
+        <ModelPickerContent
+          capabilities={capabilities}
+          models={allModels}
+          onSelectModel={(modelId) => {
+            setOpen(false);
+            Promise.resolve(onRetry(message, modelId)).catch(() => undefined);
+          }}
+          selectedModelId={selectedModelId}
+        />
       </ModelSelectorContent>
     </ModelSelector>
   );

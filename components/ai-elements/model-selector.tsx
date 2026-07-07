@@ -89,12 +89,14 @@ export const ModelSelectorTrigger = (props: ModelSelectorTriggerProps) => {
 };
 
 export type ModelSelectorContentProps = ComponentProps<typeof PopoverContent> & {
+  commandProps?: ComponentProps<typeof Command>;
   title?: ReactNode;
 };
 
 export const ModelSelectorContent = ({
   className,
   children,
+  commandProps,
   title = "Choose model",
   onOpenAutoFocus,
   ...props
@@ -123,7 +125,13 @@ export const ModelSelectorContent = ({
           <SheetDescription>Search and choose a model.</SheetDescription>
         </SheetHeader>
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-foreground/20" />
-        <Command className="min-h-0 flex-1 rounded-none bg-transparent p-1 pt-2 **:data-[slot=command-input-wrapper]:h-auto">
+        <Command
+          {...commandProps}
+          className={cn(
+            "min-h-0 flex-1 rounded-none bg-transparent p-1 pt-2 **:data-[slot=command-input-wrapper]:h-auto",
+            commandProps?.className
+          )}
+        >
           {children}
         </Command>
       </SheetContent>
@@ -142,7 +150,13 @@ export const ModelSelectorContent = ({
       sideOffset={8}
       {...props}
     >
-      <Command className="**:data-[slot=command-input-wrapper]:h-auto">
+      <Command
+        {...commandProps}
+        className={cn(
+          "**:data-[slot=command-input-wrapper]:h-auto",
+          commandProps?.className
+        )}
+      >
         {children}
       </Command>
     </PopoverContent>

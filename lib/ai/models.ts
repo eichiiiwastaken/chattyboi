@@ -61,6 +61,147 @@ export type ChatModel = {
   description: string;
 };
 
+const MAX_MODELS_TOTAL = 80;
+const DEFAULT_PROVIDER_LIMIT = 12;
+const OPENROUTER_PROVIDER_LIMIT = 48;
+const PROVIDER_SORT_ORDER = [
+  "opencodego",
+  "openai",
+  "anthropic",
+  "google",
+  "meta",
+  "deepseek",
+  "xai",
+  "moonshotai",
+  "mistralai",
+  "mistral",
+  "alibaba",
+  "qwen",
+  "zai",
+  "perplexity",
+  "openrouter",
+];
+
+const NON_CHAT_MODEL_PATTERN =
+  /(^|[-_/])(audio|babbage|clip|davinci|dall-e|edit|embedding|image|moderation|rerank|sdxl|speech|stable-diffusion|tts|transcribe|translate|whisper)([-_/]|$)/i;
+
+const PREFERRED_MODEL_PATTERNS: [RegExp, number][] = [
+  [/gpt-5|gpt-4\.1|gpt-4o|o[34]|chatgpt/i, 120],
+  [/claude|sonnet|opus|haiku/i, 115],
+  [/gemini|learnlm/i, 110],
+  [/grok|x-ai|xai/i, 105],
+  [/deepseek|r1|v3/i, 100],
+  [/kimi|moonshot/i, 95],
+  [/llama|meta/i, 90],
+  [/qwen|alibaba/i, 88],
+  [/mistral|codestral|ministral/i, 85],
+  [/glm|zai|zhipu/i, 82],
+  [/perplexity|sonar/i, 78],
+  [/command|cohere/i, 70],
+];
+
+const MODEL_PENALTY_PATTERNS: [RegExp, number][] = [
+  [/legacy|deprecated|experimental/i, 35],
+  [/preview|beta|alpha|test/i, 20],
+  [/free/i, 10],
+];
+
+function providerSortIndex(provider: string) {
+  const index = PROVIDER_SORT_ORDER.indexOf(provider);
+  return index === -1 ? 999 : index;
+}
+
+function scoreModel(model: ChatModel) {
+  const searchable = `${model.id} ${model.name} ${model.provider}`;
+  let score = model.id === DEFAULT_CHAT_MODEL ? 1000 : 0;
+
+  for (const [pattern, value] of PREFERRED_MODEL_PATTERNS) {
+    if (pattern.test(searchable)) {
+      score += value;
+    }
+  }
+
+  for (const [pattern, value] of MODEL_PENALTY_PATTERNS) {
+    if (pattern.test(searchable)) {
+      score -= value;
+    }
+  }
+
+  if (/latest|pro|max|ultra|large/i.test(searchable)) {
+    score += 12;
+  }
+
+  if (/mini|small|flash|haiku|lite|nano/i.test(searchable)) {
+    score += 8;
+  }
+
+  return score;
+}
+
+function providerLimit(provider: string) {
+  return provider === "openrouter"
+    ? OPENROUTER_PROVIDER_LIMIT
+    : DEFAULT_PROVIDER_LIMIT;
+}
+
+function curateModels(models: ChatModel[]) {
+  const chatModels = models.filter((model) => {
+    if (model.id === DEFAULT_CHAT_MODEL) {
+      return true;
+    }
+
+    return !NON_CHAT_MODEL_PATTERN.test(`${model.id} ${model.name}`);
+  });
+
+  const scoredModels = chatModels
+    .map((model, index) => ({ index, model, score: scoreModel(model) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => {
+      const providerDelta =
+        providerSortIndex(a.model.provider) -
+        providerSortIndex(b.model.provider);
+      if (providerDelta !== 0) {
+        return providerDelta;
+      }
+
+      return b.score - a.score || a.index - b.index;
+    });
+
+  const providerCounts = new Map<string, number>();
+  const curated: ChatModel[] = [];
+
+  for (const { model } of scoredModels) {
+    const count = providerCounts.get(model.provider) ?? 0;
+    if (count >= providerLimit(model.provider)) {
+      continue;
+    }
+
+    providerCounts.set(model.provider, count + 1);
+    curated.push(model);
+
+    if (curated.length >= MAX_MODELS_TOTAL) {
+      break;
+    }
+  }
+
+  if (curated.length > 0) {
+    return curated;
+  }
+
+  return chatModels.slice(0, MAX_MODELS_TOTAL);
+}
+
+function capabilitiesForModels(
+  capabilities: Record<string, ModelCapabilities>,
+  models: ChatModel[]
+) {
+  const allowedIds = new Set(models.map((model) => model.id));
+
+  return Object.fromEntries(
+    Object.entries(capabilities).filter(([modelId]) => allowedIds.has(modelId))
+  );
+}
+
 function uniqueModels(models: ChatModel[]) {
   const seen = new Set<string>();
 
@@ -167,12 +308,14 @@ async function fetchPublicOpenRouterModels({
       return [];
     }
     const json = await res.json();
-    return (json.data ?? []).map((m: { id: string; name?: string }) => ({
-      id: gatewayIds ? m.id : `openrouter/${m.id}`,
-      name: m.name || m.id,
-      provider: gatewayIds ? (m.id.split("/")[0] ?? "gateway") : "openrouter",
-      description: "",
-    }));
+    return (json.data ?? []).map(
+      (m: { id: string; name?: string; description?: string }) => ({
+        id: gatewayIds ? m.id : `openrouter/${m.id}`,
+        name: m.name || m.id,
+        provider: m.id.split("/")[0] ?? (gatewayIds ? "gateway" : "openrouter"),
+        description: m.description ?? "",
+      })
+    );
   } catch {
     return [];
   }
@@ -189,12 +332,14 @@ export async function getAllModels(): Promise<ChatModel[]> {
       fetchOpenRouterModels(),
       fetchOpenAIModels(),
     ]);
-  return uniqueModels([
-    ...gatewayModels,
-    ...openCodeGoModels,
-    ...openRouterModels,
-    ...openAIModels,
-  ]);
+  return curateModels(
+    uniqueModels([
+      ...gatewayModels,
+      ...openCodeGoModels,
+      ...openRouterModels,
+      ...openAIModels,
+    ])
+  );
 }
 
 type OpenRouterRawModel = {
@@ -288,12 +433,14 @@ export async function fetchAllModelData(): Promise<{
     fetchOpenAIModels(),
   ]);
 
-  const allModels = uniqueModels([
-    ...gatewayModels,
-    ...openCodeGoModels,
-    ...openRouterModels,
-    ...openAIModels,
-  ]);
+  const allModels = curateModels(
+    uniqueModels([
+      ...gatewayModels,
+      ...openCodeGoModels,
+      ...openRouterModels,
+      ...openAIModels,
+    ])
+  );
   const capabilities: Record<string, ModelCapabilities> = {};
 
   for (const model of gatewayModels) {
@@ -320,7 +467,10 @@ export async function fetchAllModelData(): Promise<{
     capabilities[model.id] = inferOpenAICapabilities(shortName);
   }
 
-  return { allModels, capabilities };
+  return {
+    allModels,
+    capabilities: capabilitiesForModels(capabilities, allModels),
+  };
 }
 
 export async function getCapabilities(): Promise<

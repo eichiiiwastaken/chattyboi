@@ -44,14 +44,18 @@ const providerNames: Record<string, string> = {
   anthropic: "Anthropic",
   deepseek: "DeepSeek",
   google: "Google",
+  inclusionai: "InclusionAI",
   meta: "Meta",
+  minimax: "MiniMax",
   mistral: "Mistral",
   moonshotai: "Moonshot",
   opencodego: "OpenCodeGo",
   openai: "OpenAI",
   openrouter: "OpenRouter",
+  qwen: "Qwen",
   xai: "xAI",
   zai: "Z.ai",
+  zhipuai: "Zhipu",
 };
 
 const providerOrder = [
@@ -64,7 +68,11 @@ const providerOrder = [
   "xai",
   "moonshotai",
   "mistral",
+  "alibaba",
+  "qwen",
   "zai",
+  "minimax",
+  "inclusionai",
   "openrouter",
 ];
 
@@ -145,6 +153,13 @@ export function ModelPickerContent({
     () => favoriteIds.filter((id) => modelIds.has(id)),
     [favoriteIds, modelIds]
   );
+  const favoriteTabIds = useMemo(
+    () =>
+      favorites.length > 0
+        ? favorites
+        : models.slice(0, Math.min(8, models.length)).map((model) => model.id),
+    [favorites, models]
+  );
   const providerIds = useMemo(
     () =>
       Array.from(new Set(models.map((model) => model.provider))).sort(
@@ -157,12 +172,22 @@ export function ModelPickerContent({
     const selectedProvider = models.find(
       (model) => model.id === selectedModelId
     )?.provider;
-    const nextProvider = selectedProvider ?? providerIds[0] ?? null;
+    const validTabs = new Set(["favorites", ...providerIds]);
+    const nextProvider =
+      favoriteTabIds.length > 0
+        ? "favorites"
+        : (selectedProvider ?? providerIds[0] ?? null);
 
-    if (!activeProvider || !providerIds.includes(activeProvider)) {
+    if (!activeProvider || !validTabs.has(activeProvider)) {
       setActiveProvider(nextProvider);
     }
-  }, [activeProvider, models, providerIds, selectedModelId]);
+  }, [
+    activeProvider,
+    favoriteTabIds.length,
+    models,
+    providerIds,
+    selectedModelId,
+  ]);
 
   useEffect(() => {
     if (favorites.length !== favoriteIds.length) {
@@ -190,7 +215,7 @@ export function ModelPickerContent({
         query.length > 0 ||
         activeProvider === null ||
         (activeProvider === "favorites"
-          ? favorites.includes(model.id)
+          ? favoriteTabIds.includes(model.id)
           : model.provider === activeProvider);
       const matchesSearch =
         query.length === 0 || getSearchText(model).includes(query);
@@ -210,7 +235,7 @@ export function ModelPickerContent({
     activeFilters,
     activeProvider,
     capabilities,
-    favorites,
+    favoriteTabIds,
     matchAllFilters,
     models,
     search,
@@ -220,6 +245,7 @@ export function ModelPickerContent({
     activeFilters.length === 0
       ? "Filter models"
       : `${activeFilters.length} filters`;
+  const isSearching = search.trim().length > 0;
 
   function toggleFavorite(modelId: string) {
     setFavoriteIds((current) =>
@@ -292,44 +318,52 @@ export function ModelPickerContent({
         </div>
       </div>
 
-      <div className="grid min-h-0 grid-cols-[44px_minmax(0,1fr)]">
-        <div className="border-border/50 border-r p-1">
-          <div className="flex flex-col items-center gap-1">
-            {tabs.map((tab) => {
-              const isActive = activeProvider === tab.id && search.length === 0;
+      <div
+        className={cn(
+          "grid min-h-0",
+          isSearching ? "grid-cols-1" : "grid-cols-[44px_minmax(0,1fr)]"
+        )}
+      >
+        {!isSearching && (
+          <div className="border-border/50 border-r bg-muted/15 p-1">
+            <div className="flex flex-col items-center gap-1">
+              {tabs.map((tab) => {
+                const isActive = activeProvider === tab.id;
 
-              return (
-                <Button
-                  aria-label={tab.label}
-                  className={cn(
-                    "size-8 rounded-lg text-muted-foreground",
-                    isActive && "bg-muted text-foreground"
-                  )}
-                  key={tab.id}
-                  onClick={() => {
-                    setActiveProvider(tab.id);
-                    setSearch("");
-                  }}
-                  size="icon-sm"
-                  title={tab.label}
-                  type="button"
-                  variant="ghost"
-                >
-                  {tab.id === "favorites" ? (
-                    <StarIcon
-                      className={cn(
-                        "size-4",
-                        favorites.length > 0 && "fill-current"
-                      )}
-                    />
-                  ) : (
-                    <ModelSelectorLogo provider={tab.provider ?? tab.id} />
-                  )}
-                </Button>
-              );
-            })}
+                return (
+                  <Button
+                    aria-label={tab.label}
+                    className={cn(
+                      "size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                      isActive &&
+                        "bg-muted text-foreground ring-1 ring-border/60"
+                    )}
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveProvider(tab.id);
+                      setSearch("");
+                    }}
+                    size="icon-sm"
+                    title={tab.label}
+                    type="button"
+                    variant="ghost"
+                  >
+                    {tab.id === "favorites" ? (
+                      <StarIcon
+                        className={cn(
+                          "size-4",
+                          favorites.length > 0 && "fill-current"
+                        )}
+                      />
+                    ) : (
+                      <ModelSelectorLogo provider={tab.provider ?? tab.id} />
+                    )}
+                  </Button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         <ModelSelectorList className="max-h-[min(430px,65dvh)]">
           {visibleModels.length === 0 ? (
@@ -346,18 +380,16 @@ export function ModelPickerContent({
 
               return (
                 <ModelSelectorItem
-                  className="flex w-full items-start gap-2.5 px-2.5 py-2.5"
+                  className={cn(
+                    "flex w-full items-start gap-2.5 px-2.5 py-2.5",
+                    isSelected && "bg-muted/75 text-foreground"
+                  )}
                   key={model.id}
                   onSelect={() => onSelectModel(model.id)}
                   value={`${model.name} ${model.id} ${model.description}`}
                 >
-                  {isSelected ? (
-                    <CheckIcon className="mt-0.5 size-4 shrink-0 text-foreground" />
-                  ) : (
-                    <span className="mt-0.5 size-4 shrink-0" />
-                  )}
                   <ModelSelectorLogo
-                    className="mt-0.5 rounded-sm"
+                    className="mt-0.5 size-5 rounded-md"
                     provider={logoProvider}
                   />
                   <div className="min-w-0 flex-1">
@@ -368,6 +400,31 @@ export function ModelPickerContent({
                       {isFastModel(model) && (
                         <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       )}
+                      <button
+                        aria-label={
+                          isFavorite
+                            ? `Remove ${model.name} from favorites`
+                            : `Add ${model.name} to favorites`
+                        }
+                        className="rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          toggleFavorite(model.id);
+                        }}
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        type="button"
+                      >
+                        <StarIcon
+                          className={cn(
+                            "size-3.5",
+                            isFavorite && "fill-current text-foreground"
+                          )}
+                        />
+                      </button>
                     </div>
                     <p className="mt-0.5 truncate text-muted-foreground text-xs">
                       {model.description || model.id}
@@ -385,28 +442,9 @@ export function ModelPickerContent({
                       <BrainIcon className="size-3.5" />
                     )}
                     <InfoIcon className="size-3.5 text-muted-foreground/70" />
-                    <button
-                      aria-label={
-                        isFavorite
-                          ? `Remove ${model.name} from favorites`
-                          : `Add ${model.name} to favorites`
-                      }
-                      className="rounded-sm text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        toggleFavorite(model.id);
-                      }}
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      type="button"
-                    >
-                      <StarIcon
-                        className={cn("size-3.5", isFavorite && "fill-current")}
-                      />
-                    </button>
+                    {isSelected && (
+                      <CheckIcon className="size-3.5 text-foreground" />
+                    )}
                   </div>
                 </ModelSelectorItem>
               );

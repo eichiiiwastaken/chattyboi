@@ -6,6 +6,7 @@ import {
   type ComponentProps,
   type ReactNode,
   useContext,
+  useState,
 } from "react";
 
 import {
@@ -39,15 +40,15 @@ type SvglRoute =
   | { dark: string; light: string };
 
 const SVGL_LOGO_MAP: Partial<Record<string, SvglRoute>> = {
-  opencodego: { dark: "https://svgl.app/library/opencode-dark.svg", light: "https://svgl.app/library/opencode.svg" },
-  opencode: { dark: "https://svgl.app/library/opencode-dark.svg", light: "https://svgl.app/library/opencode.svg" },
-  openai: { dark: "https://svgl.app/library/openai_dark.svg", light: "https://svgl.app/library/openai.svg" },
-  anthropic: { dark: "https://svgl.app/library/anthropic_white.svg", light: "https://svgl.app/library/anthropic_black.svg" },
+  opencodego: "https://models.dev/logos/opencode.svg",
+  opencode: "https://models.dev/logos/opencode.svg",
+  openai: "https://models.dev/logos/openai.svg",
+  anthropic: "https://models.dev/logos/anthropic.svg",
   google: "https://svgl.app/library/google.svg",
   deepseek: "https://svgl.app/library/deepseek.svg",
-  mistral: "https://svgl.app/library/mistral-ai_logo.svg",
+  mistral: "https://models.dev/logos/mistral.svg",
   groq: "https://svgl.app/library/groq.svg",
-  xai: { dark: "https://svgl.app/library/xai_dark.svg", light: "https://svgl.app/library/xai_light.svg" },
+  xai: "https://models.dev/logos/xai.svg",
   perplexity: "https://svgl.app/library/perplexity.svg",
   azure: "https://svgl.app/library/azure.svg",
   huggingface: "https://svgl.app/library/hugging_face.svg",
@@ -62,6 +63,13 @@ const SVGL_LOGO_MAP: Partial<Record<string, SvglRoute>> = {
   llama: "https://svgl.app/library/meta.svg",
   "github-models": { dark: "https://svgl.app/library/github_dark.svg", light: "https://svgl.app/library/github_light.svg" },
   v0: { dark: "https://svgl.app/library/vercel_dark.svg", light: "https://svgl.app/library/vercel.svg" },
+  alibaba: "https://models.dev/logos/alibaba.svg",
+  qwen: "https://models.dev/logos/qwen.svg",
+  moonshotai: "https://models.dev/logos/moonshotai.svg",
+  minimax: "https://models.dev/logos/minimax.svg",
+  inclusionai: "https://models.dev/logos/inclusionai.svg",
+  zai: "https://models.dev/logos/zai.svg",
+  zhipuai: "https://models.dev/logos/zhipuai.svg",
 };
 
 const ModelSelectorContext = createContext({ isMobile: false });
@@ -290,6 +298,7 @@ export const ModelSelectorLogo = ({
   ...props
 }: ModelSelectorLogoProps) => {
   const { resolvedTheme } = useTheme();
+  const [failed, setFailed] = useState(false);
   const route = SVGL_LOGO_MAP[provider];
   const src = route
     ? typeof route === "string"
@@ -298,18 +307,39 @@ export const ModelSelectorLogo = ({
         ? route.dark
         : route.light
     : `https://models.dev/logos/${provider}.svg`;
-
-  const isSingleRoute = typeof route === "string";
+  const fallback = provider
+    .split(/[-_/]/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
-    <img
-      {...props}
-      alt={`${provider} logo`}
-      className={cn("size-4", isSingleRoute && "dark:invert", className)}
-      height={16}
-      src={src}
-      width={16}
-    />
+    <span
+      className={cn(
+        "inline-flex size-4 shrink-0 items-center justify-center overflow-hidden rounded-[4px] bg-white text-[8px] font-semibold text-neutral-950 ring-1 ring-border/60",
+        className
+      )}
+      title={`${provider} logo`}
+    >
+      {failed ? (
+        fallback
+      ) : (
+        <img
+          {...props}
+          alt={`${provider} logo`}
+          className="size-full object-contain p-[1px]"
+          height={16}
+          onError={(event) => {
+            props.onError?.(event);
+            setFailed(true);
+          }}
+          src={src}
+          width={16}
+        />
+      )}
+    </span>
   );
 };
 

@@ -265,6 +265,8 @@ function PureMultimodalInput({
   const [uploadQueue, setUploadQueue] = useState<
     Array<{ name: string; url?: string; contentType?: string }>
   >([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const dragDepthRef = useRef(0);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
@@ -352,43 +354,65 @@ function PureMultimodalInput({
     }
   }, []);
 
-  const handleFileChange = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(event.target.files || []);
+  const uploadFiles = useCallback(
+    async (files: File[], fallbackName = "Pasted image") => {
+      if (files.length === 0) {
+        return;
+      }
 
       const queueItems = files.map((file) => ({
-        name: file.name,
+        name: file.name || fallbackName,
         url: URL.createObjectURL(file),
         contentType: file.type,
       }));
-      setUploadQueue(queueItems);
+
+      setUploadQueue((prev) => [...prev, ...queueItems]);
 
       try {
         const uploadPromises = files.map((file) => uploadFile(file));
         const uploadedAttachments = await Promise.all(uploadPromises);
         const successfullyUploadedAttachments = uploadedAttachments.filter(
-          (attachment) => attachment !== undefined
+          (attachment) =>
+            attachment !== undefined &&
+            attachment.url !== undefined &&
+            attachment.contentType !== undefined
         );
 
         setAttachments((currentAttachments) => [
           ...currentAttachments,
-          ...successfullyUploadedAttachments,
+          ...(successfullyUploadedAttachments as Attachment[]),
         ]);
       } catch (error) {
         console.error("Failed to upload files:", error);
         toast.error("Failed to upload files");
       } finally {
         setUploadQueue((prev) => {
-          for (const item of prev) {
+          for (const item of queueItems) {
             if (item.url?.startsWith("blob:")) {
               URL.revokeObjectURL(item.url);
             }
           }
-          return [];
+
+          return prev.filter(
+            (item) => !queueItems.some((queued) => queued.url === item.url)
+          );
         });
       }
     },
     [setAttachments, uploadFile]
+  );
+
+  const handleFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files || []);
+
+      await uploadFiles(files);
+
+      if (event.target) {
+        event.target.value = "";
+      }
+    },
+    [uploadFiles]
   );
 
   const handlePaste = useCallback(
@@ -417,47 +441,96 @@ function PureMultimodalInput({
         .map((item) => item.getAsFile())
         .filter((file): file is File => file !== null);
 
-      const queueItems = files.map((file) => ({
-        name: file.name || "Pasted image",
-        url: URL.createObjectURL(file),
-        contentType: file.type,
-      }));
-
-      setUploadQueue((prev) => [...prev, ...queueItems]);
-
       try {
-        const uploadPromises = files.map((file) => uploadFile(file));
-
-        const uploadedAttachments = await Promise.all(uploadPromises);
-        const successfullyUploadedAttachments = uploadedAttachments.filter(
-          (attachment) =>
-            attachment !== undefined &&
-            attachment.url !== undefined &&
-            attachment.contentType !== undefined
-        );
-
-        setAttachments((curr) => [
-          ...curr,
-          ...(successfullyUploadedAttachments as Attachment[]),
-        ]);
+        await uploadFiles(files, "Pasted image");
       } catch (_error) {
         toast.error("Failed to upload pasted image(s)");
-      } finally {
-        setUploadQueue((prev) => {
-          for (const item of prev) {
-            if (item.url?.startsWith("blob:")) {
-              URL.revokeObjectURL(item.url);
-            }
-          }
-          return [];
-        });
       }
     },
-    [setAttachments, supportsAttachments, uploadFile]
+    [supportsAttachments, uploadFiles]
   );
+
+  useEffect(() => {
+    const hasDraggedFiles = (event: DragEvent) =>
+      Array.from(event.dataTransfer?.types ?? []).includes("Files");
+
+    const resetDragState = () => {
+      dragDepthRef.current = 0;
+      setIsDraggingFiles(false);
+    };
+
+    const handleDragEnter = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepthRef.current += 1;
+      setIsDraggingFiles(true);
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = supportsAttachments ? "copy" : "none";
+      }
+    };
+
+    const handleDragLeave = (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+
+      if (dragDepthRef.current === 0) {
+        setIsDraggingFiles(false);
+      }
+    };
+
+    const handleDrop = async (event: DragEvent) => {
+      if (!hasDraggedFiles(event)) {
+        return;
+      }
+
+      event.preventDefault();
+      resetDragState();
+
+      if (!supportsAttachments) {
+        toast.error("The selected model doesn't support file uploads.");
+        return;
+      }
+
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      await uploadFiles(files);
+    };
+
+    document.addEventListener("dragenter", handleDragEnter);
+    document.addEventListener("dragover", handleDragOver);
+    document.addEventListener("dragleave", handleDragLeave);
+    document.addEventListener("drop", handleDrop);
+
+    return () => {
+      document.removeEventListener("dragenter", handleDragEnter);
+      document.removeEventListener("dragover", handleDragOver);
+      document.removeEventListener("dragleave", handleDragLeave);
+      document.removeEventListener("drop", handleDrop);
+    };
+  }, [supportsAttachments, uploadFiles]);
 
   return (
     <div className={cn("relative flex w-full flex-col gap-4", className)}>
+      {isDraggingFiles && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center border-2 border-primary/70 border-dashed bg-background/70 text-sm font-medium text-foreground shadow-inner backdrop-blur-sm">
+          Drop files to attach
+        </div>
+      )}
+
       {editingMessage && onCancelEdit && (
         <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
           <span>Editing message</span>

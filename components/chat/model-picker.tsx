@@ -409,6 +409,14 @@ function getModelSubtitle(model: ChatModel, activeProvider: string | null) {
   return model.description || getModelDisplayId(model, activeProvider);
 }
 
+function getModelDisplayName(model: ChatModel, activeProvider: string | null) {
+  if (activeProvider !== model.provider) {
+    return model.name;
+  }
+
+  return trimActiveProviderPrefix(model.name, model.provider) || model.name;
+}
+
 export function ModelPickerContent({
   capabilities,
   models,
@@ -563,6 +571,9 @@ export function ModelPickerContent({
     : splitVisibleModels.primary;
   const detailModel =
     orderedModels.find((model) => model.id === detailModelId) ?? null;
+  const detailModelName = detailModel
+    ? getModelDisplayName(detailModel, detailModel.provider)
+    : "";
 
   const filterLabel =
     activeFilters.length === 0
@@ -599,6 +610,7 @@ export function ModelPickerContent({
     const isFavorite = favorites.includes(model.id);
     const logoProvider = model.provider || (model.id ?? "").split("/")[0];
     const cost = getModelCost(model);
+    const displayName = getModelDisplayName(model, activeProvider);
 
     return (
       <ModelSelectorItem
@@ -617,7 +629,7 @@ export function ModelPickerContent({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
             <ModelSelectorName className="font-medium">
-              {model.name}
+              {displayName}
             </ModelSelectorName>
             <span className="shrink-0 text-[11px] text-emerald-500">
               {cost.marks}
@@ -625,8 +637,8 @@ export function ModelPickerContent({
             <button
               aria-label={
                 isFavorite
-                  ? `Remove ${model.name} from favorites`
-                  : `Add ${model.name} to favorites`
+                  ? `Remove ${displayName} from favorites`
+                  : `Add ${displayName} to favorites`
               }
               className="rounded-sm text-muted-foreground transition-colors hover:text-foreground"
               onClick={(event) => {
@@ -658,7 +670,7 @@ export function ModelPickerContent({
           {modelCapabilities?.file && <T3AttachIcon size={14} />}
           {modelCapabilities?.reasoning && <BrainIcon className="size-3.5" />}
           <button
-            aria-label={`View ${model.name} details`}
+            aria-label={`View ${displayName} details`}
             className={cn(
               "rounded-full text-muted-foreground transition-colors hover:text-foreground",
               detailModelId === model.id && "text-foreground"
@@ -802,7 +814,7 @@ export function ModelPickerContent({
           </div>
         )}
 
-        <ModelSelectorList className="max-h-[min(430px,65dvh)]">
+        <ModelSelectorList className="h-[min(430px,65dvh)] max-h-[min(430px,65dvh)]">
           {visibleModels.length === 0 ? (
             <div className="px-4 py-6 text-center text-muted-foreground text-sm">
               No matching models
@@ -842,7 +854,7 @@ export function ModelPickerContent({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <h3 className="truncate font-semibold text-sm">
-                  {detailModel.name}
+                  {detailModelName}
                 </h3>
                 <span className="text-[11px] text-emerald-500">
                   {getModelCost(detailModel).marks}
@@ -858,8 +870,11 @@ export function ModelPickerContent({
             <section>
               <h4 className="font-medium text-xs">Description</h4>
               <p className="mt-1 text-muted-foreground text-xs leading-5">
-                {detailModel.description ||
-                  `${detailModel.name} is available through ${getProviderLabel(
+                {trimActiveProviderPrefix(
+                  detailModel.description,
+                  detailModel.provider
+                ) ||
+                  `${detailModelName} is available through ${getProviderLabel(
                     detailModel.provider
                   )} and can be selected for this chat.`}
               </p>

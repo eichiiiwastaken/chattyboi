@@ -158,8 +158,11 @@ function RetryMenu({
         </Tooltip>
       </TooltipProvider>
       <ModelSelectorContent
-        className="w-[390px] overflow-hidden"
-        commandProps={{ className: "p-0", shouldFilter: false }}
+        className="w-[390px] overflow-visible"
+        commandProps={{
+          className: "overflow-visible p-0",
+          shouldFilter: false,
+        }}
       >
         <div className="border-border/50 border-b p-1.5">
           <button

@@ -945,8 +945,11 @@ function PureModelSelectorCompact({
         </Button>
       </ModelSelectorTrigger>
       <ModelSelectorContent
-        className="w-[390px] overflow-hidden"
-        commandProps={{ className: "p-0", shouldFilter: false }}
+        className="w-[390px] overflow-visible"
+        commandProps={{
+          className: "overflow-visible p-0",
+          shouldFilter: false,
+        }}
       >
         {hasConfiguredModels ? (
           <ModelPickerContent

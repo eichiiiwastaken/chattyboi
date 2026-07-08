@@ -50,20 +50,46 @@ type ProviderTab = {
 };
 
 const providerNames: Record<string, string> = {
+  ai21: "AI21",
+  alibaba: "Alibaba",
+  amazon: "Amazon",
+  "amazon-bedrock": "Amazon Bedrock",
   anthropic: "Anthropic",
+  anthropicai: "Anthropic",
+  bedrock: "Amazon Bedrock",
+  cerebras: "Cerebras",
+  cloudflare: "Cloudflare",
+  "cloudflare-workers-ai": "Cloudflare",
+  cohere: "Cohere",
   deepseek: "DeepSeek",
+  deepinfra: "DeepInfra",
+  fireworks: "Fireworks",
+  "fireworks-ai": "Fireworks",
   google: "Google",
+  "google-vertex": "Google",
+  "google-vertex-anthropic": "Anthropic",
+  groq: "Groq",
+  huggingface: "Hugging Face",
   inclusionai: "InclusionAI",
   meta: "Meta",
   minimax: "MiniMax",
   mistral: "Mistral",
+  mistralai: "Mistral",
   moonshotai: "Moonshot",
+  nebius: "Nebius",
   opencodego: "OpenCodeGo",
   openai: "OpenAI",
   openrouter: "OpenRouter",
+  perplexity: "Perplexity",
   qwen: "Qwen",
+  requesty: "Requesty",
+  stealth: "Stealth",
+  together: "Together AI",
+  togetherai: "Together AI",
   xai: "xAI",
+  xiaomi: "Xiaomi",
   zai: "Z.ai",
+  "z-ai": "Z.ai",
   zhipuai: "Zhipu",
 };
 
@@ -77,11 +103,29 @@ const providerOrder = [
   "xai",
   "moonshotai",
   "mistral",
+  "mistralai",
   "alibaba",
   "qwen",
   "zai",
+  "z-ai",
+  "zhipuai",
   "minimax",
+  "xiaomi",
+  "stealth",
   "inclusionai",
+  "perplexity",
+  "cohere",
+  "groq",
+  "cerebras",
+  "together",
+  "togetherai",
+  "fireworks-ai",
+  "deepinfra",
+  "amazon-bedrock",
+  "bedrock",
+  "ai21",
+  "huggingface",
+  "requesty",
   "openrouter",
 ];
 
@@ -201,6 +245,170 @@ function sortProviders(a: string, b: string) {
   return getProviderLabel(a).localeCompare(getProviderLabel(b));
 }
 
+function getModelRank(model: ChatModel) {
+  const text = `${model.id} ${model.name} ${model.provider}`.toLowerCase();
+  let rank = 0;
+
+  const rankPatterns: [RegExp, number][] = [
+    [
+      /kimi-k2\.6|gpt-5|claude.*4|gemini-2\.[05]|grok-4|deepseek-v3|deepseek-r1/i,
+      140,
+    ],
+    [/opus|sonnet|pro|max|ultra|large|reasoning/i, 26],
+    [/flash|haiku|mini|small|lite|fast|turbo|nano/i, 18],
+    [/gpt-4\.1|gpt-4o|o[34]|llama-4|qwen3|glm-4\.5/i, 115],
+    [/kimi|moonshot|mistral|codestral|ministral|llama|command|sonar/i, 85],
+    [/preview|beta|experimental|free/i, -18],
+  ];
+
+  for (const [pattern, value] of rankPatterns) {
+    if (pattern.test(text)) {
+      rank += value;
+    }
+  }
+
+  if (isLegacyModel(model)) {
+    rank -= 160;
+  }
+
+  return rank;
+}
+
+function isLegacyModel(model: ChatModel) {
+  const text = `${model.id} ${model.name}`.toLowerCase();
+
+  if (/legacy|deprecated|previous|old/.test(text)) {
+    return true;
+  }
+
+  if (
+    /gpt-5|claude.*4|gemini-2|grok-4|deepseek-(r1|v3)|kimi-k2|qwen3|llama-4|glm-4\.5/.test(
+      text
+    )
+  ) {
+    return false;
+  }
+
+  return /gpt-3|gpt-4(?!\.1|o)|claude-2|claude-3|gemini-1|llama-2|llama-3(?!\.)|mistral-7b|o1|o3-mini/.test(
+    text
+  );
+}
+
+function sortModelsByHierarchy(a: ChatModel, b: ChatModel) {
+  const providerDelta = sortProviders(a.provider, b.provider);
+  if (providerDelta !== 0) {
+    return providerDelta;
+  }
+
+  const legacyDelta = Number(isLegacyModel(a)) - Number(isLegacyModel(b));
+  if (legacyDelta !== 0) {
+    return legacyDelta;
+  }
+
+  const rankDelta = getModelRank(b) - getModelRank(a);
+  if (rankDelta !== 0) {
+    return rankDelta;
+  }
+
+  return a.name.localeCompare(b.name);
+}
+
+function getSuggestedModelIds(models: ChatModel[]) {
+  const byProvider = new Map<string, ChatModel[]>();
+
+  for (const model of models) {
+    const existing = byProvider.get(model.provider) ?? [];
+    existing.push(model);
+    byProvider.set(model.provider, existing);
+  }
+
+  const orderedProviders = Array.from(byProvider.keys()).sort(sortProviders);
+  const suggestions: string[] = [];
+
+  for (const provider of orderedProviders) {
+    const model = byProvider.get(provider)?.[0];
+    if (model) {
+      suggestions.push(model.id);
+    }
+
+    if (suggestions.length >= 8) {
+      return suggestions;
+    }
+  }
+
+  for (const model of models) {
+    if (!suggestions.includes(model.id)) {
+      suggestions.push(model.id);
+    }
+
+    if (suggestions.length >= 8) {
+      break;
+    }
+  }
+
+  return suggestions;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function trimActiveProviderPrefix(value: string, provider: string) {
+  const providerLabel = getProviderLabel(provider);
+  const aliases = Array.from(new Set([provider, providerLabel])).filter(
+    Boolean
+  );
+  let result = value.trim();
+
+  for (const alias of aliases) {
+    const escapedAlias = escapeRegExp(alias);
+    result = result
+      .replace(new RegExp(`^by\\s+${escapedAlias}\\b[\\s:,-]*`, "i"), "")
+      .replace(new RegExp(`^${escapedAlias}'s\\s+`, "i"), "")
+      .replace(new RegExp(`^${escapedAlias}\\b[\\s:,-]*`, "i"), "")
+      .trim();
+  }
+
+  return result;
+}
+
+function getModelDisplayId(model: ChatModel, activeProvider: string | null) {
+  if (activeProvider !== model.provider) {
+    return model.id;
+  }
+
+  const parts = model.id.split("/").filter(Boolean);
+  if (parts.length <= 1) {
+    return model.id;
+  }
+
+  if (parts[0] === model.provider) {
+    return parts.slice(1).join("/");
+  }
+
+  if (parts[0] === "openrouter" && parts[1] === model.provider) {
+    return parts.slice(2).join("/");
+  }
+
+  if (parts[0] === "opencodego") {
+    return parts.slice(1).join("/");
+  }
+
+  return model.id;
+}
+
+function getModelSubtitle(model: ChatModel, activeProvider: string | null) {
+  if (activeProvider === model.provider) {
+    const description = model.description
+      ? trimActiveProviderPrefix(model.description, model.provider)
+      : "";
+
+    return description || getModelDisplayId(model, activeProvider);
+  }
+
+  return model.description || getModelDisplayId(model, activeProvider);
+}
+
 export function ModelPickerContent({
   capabilities,
   models,
@@ -225,9 +433,13 @@ export function ModelPickerContent({
     []
   );
 
-  const modelIds = useMemo(
-    () => new Set(models.map((model) => model.id)),
+  const orderedModels = useMemo(
+    () => [...models].sort(sortModelsByHierarchy),
     [models]
+  );
+  const modelIds = useMemo(
+    () => new Set(orderedModels.map((model) => model.id)),
+    [orderedModels]
   );
   const favorites = useMemo(
     () => favoriteIds.filter((id) => modelIds.has(id)),
@@ -235,21 +447,19 @@ export function ModelPickerContent({
   );
   const favoriteTabIds = useMemo(
     () =>
-      favorites.length > 0
-        ? favorites
-        : models.slice(0, Math.min(8, models.length)).map((model) => model.id),
-    [favorites, models]
+      favorites.length > 0 ? favorites : getSuggestedModelIds(orderedModels),
+    [favorites, orderedModels]
   );
   const providerIds = useMemo(
     () =>
-      Array.from(new Set(models.map((model) => model.provider))).sort(
+      Array.from(new Set(orderedModels.map((model) => model.provider))).sort(
         sortProviders
       ),
-    [models]
+    [orderedModels]
   );
 
   useEffect(() => {
-    const selectedProvider = models.find(
+    const selectedProvider = orderedModels.find(
       (model) => model.id === selectedModelId
     )?.provider;
     const validTabs = new Set(["favorites", ...providerIds]);
@@ -264,7 +474,7 @@ export function ModelPickerContent({
   }, [
     activeProvider,
     favoriteTabIds.length,
-    models,
+    orderedModels,
     providerIds,
     selectedModelId,
   ]);
@@ -290,7 +500,7 @@ export function ModelPickerContent({
   const visibleModels = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return models.filter((model) => {
+    return orderedModels.filter((model) => {
       const matchesProvider =
         query.length > 0 ||
         activeProvider === null ||
@@ -317,7 +527,7 @@ export function ModelPickerContent({
     capabilities,
     favoriteTabIds,
     matchAllFilters,
-    models,
+    orderedModels,
     search,
   ]);
   const activeProviderLabel =
@@ -334,9 +544,16 @@ export function ModelPickerContent({
       return { primary: visibleModels, legacy: [] };
     }
 
+    const primary = visibleModels.filter((model) => !isLegacyModel(model));
+    const legacy = visibleModels.filter((model) => isLegacyModel(model));
+
+    if (primary.length <= 8) {
+      return { primary, legacy };
+    }
+
     return {
-      primary: visibleModels.slice(0, 7),
-      legacy: visibleModels.slice(7),
+      primary: primary.slice(0, 8),
+      legacy: [...primary.slice(8), ...legacy],
     };
   }, [activeProvider, isSearching, visibleModels]);
   const showLegacy =
@@ -345,7 +562,7 @@ export function ModelPickerContent({
     ? [...splitVisibleModels.primary, ...splitVisibleModels.legacy]
     : splitVisibleModels.primary;
   const detailModel =
-    models.find((model) => model.id === detailModelId) ?? null;
+    orderedModels.find((model) => model.id === detailModelId) ?? null;
 
   const filterLabel =
     activeFilters.length === 0
@@ -432,7 +649,7 @@ export function ModelPickerContent({
             </button>
           </div>
           <p className="mt-0.5 truncate text-muted-foreground text-xs">
-            {model.description || model.id}
+            {getModelSubtitle(model, activeProvider)}
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5 pt-0.5 text-foreground/70">
@@ -606,8 +823,8 @@ export function ModelPickerContent({
                     )}
                   />
                   {showLegacy
-                    ? "Hide legacy models"
-                    : `${splitVisibleModels.legacy.length} legacy models`}
+                    ? "Hide more models"
+                    : `${splitVisibleModels.legacy.length} more models`}
                 </button>
               )}
             </>

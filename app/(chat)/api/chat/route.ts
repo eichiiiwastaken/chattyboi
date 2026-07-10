@@ -392,12 +392,14 @@ export async function POST(request: Request) {
     }
 
     const { longitude, latitude, city, country } = geolocation(request);
+    const timezone = request.headers.get("x-vercel-ip-timezone") ?? undefined;
 
     const requestHints: RequestHints = {
       longitude,
       latitude,
       city,
       country,
+      timezone,
     };
 
     const userMessageToSave =

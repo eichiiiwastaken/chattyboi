@@ -17,6 +17,7 @@ export type RequestHints = {
   longitude: Geo["longitude"];
   city: Geo["city"];
   country: Geo["country"];
+  timezone?: string;
 };
 
 export const getRequestPromptFromHints = (requestHints: RequestHints) => `\
@@ -27,6 +28,33 @@ About the origin of user's request:
 - country: ${requestHints.country}
 `;
 
+function getValidTimezone(timezone: string | undefined) {
+  if (!timezone) {
+    return "UTC";
+  }
+
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return timezone;
+  } catch {
+    return "UTC";
+  }
+}
+
+export const getCurrentDateTimePrompt = (
+  timezone: string | undefined,
+  now = new Date()
+) => {
+  const validTimezone = getValidTimezone(timezone);
+  const localTime = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "full",
+    timeStyle: "long",
+    timeZone: validTimezone,
+  }).format(now);
+
+  return `Current date and time: ${localTime} (${validTimezone}).`;
+};
+
 export const systemPrompt = ({
   requestHints,
   webSearchEnabled,
@@ -36,7 +64,8 @@ export const systemPrompt = ({
 }) => {
   const requestPrompt = getRequestPromptFromHints(requestHints);
 
-  let prompt = `${regularPrompt}\n\n${requestPrompt}`;
+  const currentDateTimePrompt = getCurrentDateTimePrompt(requestHints.timezone);
+  let prompt = `${regularPrompt}\n\n${currentDateTimePrompt}\n\n${requestPrompt}`;
 
   if (webSearchEnabled) {
     prompt +=

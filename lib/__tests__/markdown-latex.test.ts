@@ -14,6 +14,16 @@ describe("normalizeLatexDelimiters", () => {
     );
   });
 
+  it("puts inline display-dollar delimiters on their own lines", () => {
+    expect(
+      normalizeLatexDelimiters(
+        "Before $$f(x) = \\begin{cases} x & x > 0 \\\\ 0 & x \\le 0 \\end{cases}$$ after"
+      )
+    ).toBe(
+      "Before \n\n$$\nf(x) = \\begin{cases} x & x > 0 \\\\ 0 & x \\le 0 \\end{cases}\n$$\n\n after"
+    );
+  });
+
   it("does not convert delimiters inside fenced code blocks", () => {
     const markdown = [
       "Outside \\(x\\)",

@@ -40,6 +40,14 @@ export function normalizeLatexDelimiters(markdown: string) {
 
 function normalizeLatexInText(text: string) {
   return text
+    .replace(/\$\$([\s\S]*?)\$\$/g, (match, math: string) => {
+      const content = math.trim();
+
+      // remark-math treats $$ as a flow-math fence only when the delimiters
+      // occupy their own lines. Normalize the common `$$x^2$$` form emitted
+      // by models before passing it to the Markdown parser.
+      return content ? `\n\n$$\n${content}\n$$\n\n` : match;
+    })
     .replace(/\\\[((?:.|\n)*?)\\\]/g, (match, math: string) => {
       const content = math.trim();
       return content ? `$$\n${content}\n$$` : match;

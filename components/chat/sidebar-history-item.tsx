@@ -39,7 +39,7 @@ const PureChatItem = ({
       </SidebarMenuButton>
 
       <SidebarMenuAction
-        className="right-8 top-1/2! size-7 -translate-y-1/2 rounded-sm bg-transparent text-sidebar-foreground/45 backdrop-blur-sm transition-[background-color,color,transform] duration-150 hover:scale-105 hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground peer-data-active/menu-button:text-sidebar-foreground/55"
+        className="right-8 top-1/2! size-7 -translate-y-1/2 rounded-sm bg-transparent text-sidebar-foreground/45 transition-[background-color,color,transform] duration-150 hover:scale-105 hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground peer-data-active/menu-button:text-sidebar-foreground/55"
         onClick={(e) => {
           e.preventDefault();
           onPin(chat.id, chat.pinnedAt ? null : new Date());
@@ -51,7 +51,7 @@ const PureChatItem = ({
       </SidebarMenuAction>
 
       <SidebarMenuAction
-        className="right-0 top-1/2! h-8 w-8 -translate-y-1/2 rounded-sm bg-transparent text-sidebar-foreground/45 backdrop-blur-sm transition-[background-color,color] duration-150 hover:bg-destructive/15 hover:text-destructive peer-data-active/menu-button:text-sidebar-foreground/55"
+        className="right-0 top-1/2! h-8 w-8 -translate-y-1/2 rounded-sm bg-transparent text-sidebar-foreground/45 transition-[background-color,color] duration-150 hover:bg-destructive/15 hover:text-destructive peer-data-active/menu-button:text-sidebar-foreground/55"
         onClick={(e) => {
           e.preventDefault();
           onDelete(chat.id);

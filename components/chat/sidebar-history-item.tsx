@@ -1,6 +1,5 @@
 import { PinIcon, PinOffIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
-import { memo } from "react";
 import type { Chat } from "@/lib/db/schema";
 import {
   SidebarMenuAction,
@@ -33,7 +32,9 @@ const PureChatItem = ({
         isActive={isActive}
       >
         <Link href={`/chat/${chat.id}`} onClick={() => setOpenMobile(false)}>
-          <span className="truncate">{chat.title}</span>
+          <span className="truncate">
+            {chat.title?.trim() || "Untitled chat"}
+          </span>
         </Link>
       </SidebarMenuButton>
 
@@ -64,9 +65,4 @@ const PureChatItem = ({
   );
 };
 
-export const ChatItem = memo(PureChatItem, (prevProps, nextProps) => {
-  if (prevProps.isActive !== nextProps.isActive) {
-    return false;
-  }
-  return true;
-});
+export const ChatItem = PureChatItem;

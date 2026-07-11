@@ -30,7 +30,7 @@ function nameToHue(name: string): number {
 
 export function SidebarUserNav({ user }: { user: User }) {
   const { status } = useSession();
-  const { setOpenMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const displayName = user.name || user.email || "User";
 
@@ -70,7 +70,11 @@ export function SidebarUserNav({ user }: { user: User }) {
             )}
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="z-[60] w-(--radix-popper-anchor-width) rounded-lg border border-border/60 bg-card/95 backdrop-blur-xl shadow-[var(--shadow-float)]"
+            className={`z-[60] w-(--radix-popper-anchor-width) rounded-lg border border-border/60 shadow-[var(--shadow-float)] ${
+              isMobile
+                ? "bg-card text-card-foreground data-open:animate-none data-closed:animate-none"
+                : "bg-card/95 backdrop-blur-xl"
+            }`}
             data-testid="user-nav-menu"
             side="top"
           >

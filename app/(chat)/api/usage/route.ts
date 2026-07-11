@@ -1,0 +1,165 @@
+import { auth } from "@/app/(auth)/auth";
+import { getUsageMessagesByUserId } from "@/lib/db/queries";
+import { ChatbotError } from "@/lib/errors";
+import { messageMetadataSchema } from "@/lib/types";
+
+const DAY_MS = 86_400_000;
+const MODEL_COLORS = ["blue", "purple", "green", "orange", "pink", "red"];
+
+function dayKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export async function GET() {
+  const session = await auth();
+  if (!session?.user) {
+    return new ChatbotError("unauthorized:settings").toResponse();
+  }
+
+  try {
+    const rows = await getUsageMessagesByUserId({ userId: session.user.id });
+    const now = new Date();
+    const today = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    );
+    const daily = Array.from({ length: 30 }, (_, index) => {
+      const date = new Date(today.getTime() - (29 - index) * DAY_MS);
+      return {
+        date: dayKey(date),
+        label: date.toLocaleDateString("en", {
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        }),
+        input: 0,
+        output: 0,
+        requests: 0,
+        latency: 0,
+        latencySamples: 0,
+      };
+    });
+    const dailyByDate = new Map(daily.map((item) => [item.date, item]));
+    const modelMap = new Map<
+      string,
+      {
+        model: string;
+        tokens: number;
+        requests: number;
+        latency: number;
+        latencySamples: number;
+      }
+    >();
+    const hours = Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      requests: 0,
+    }));
+    const latencyBuckets = [
+      { bucket: "< 2s", requests: 0 },
+      { bucket: "2–5s", requests: 0 },
+      { bucket: "5–15s", requests: 0 },
+      { bucket: "15s+", requests: 0 },
+    ];
+
+    let totalInput = 0;
+    let totalOutput = 0;
+    let totalLatency = 0;
+    let latencySamples = 0;
+    let totalTtft = 0;
+    let ttftSamples = 0;
+    let measuredRequests = 0;
+
+    for (const row of rows) {
+      const parsed = messageMetadataSchema.safeParse(row.metadata);
+      if (!parsed.success) {
+        continue;
+      }
+      const meta = parsed.data;
+      const input = meta.usage?.inputTokens ?? 0;
+      const output = meta.usage?.outputTokens ?? 0;
+      const tokens = meta.usage?.totalTokens ?? input + output;
+      if (!meta.usage && !meta.modelId && !meta.duration) {
+        continue;
+      }
+      measuredRequests += 1;
+      totalInput += input;
+      totalOutput += output;
+
+      const item = dailyByDate.get(dayKey(row.createdAt));
+      if (item) {
+        item.input += input;
+        item.output += output;
+        item.requests += 1;
+        if (meta.duration !== undefined) {
+          item.latency += meta.duration;
+          item.latencySamples += 1;
+        }
+      }
+
+      hours[row.createdAt.getUTCHours()].requests += 1;
+      const model = meta.modelName ?? meta.modelId ?? "Unknown model";
+      const modelItem = modelMap.get(model) ?? {
+        model,
+        tokens: 0,
+        requests: 0,
+        latency: 0,
+        latencySamples: 0,
+      };
+      modelItem.tokens += tokens;
+      modelItem.requests += 1;
+      if (meta.duration !== undefined) {
+        modelItem.latency += meta.duration;
+        modelItem.latencySamples += 1;
+      }
+      modelMap.set(model, modelItem);
+
+      if (meta.duration !== undefined) {
+        totalLatency += meta.duration;
+        latencySamples += 1;
+        const seconds = meta.duration / 1000;
+        const bucket = seconds < 2 ? 0 : seconds < 5 ? 1 : seconds < 15 ? 2 : 3;
+        latencyBuckets[bucket].requests += 1;
+      }
+      if (meta.timeToFirstToken !== undefined) {
+        totalTtft += meta.timeToFirstToken;
+        ttftSamples += 1;
+      }
+    }
+
+    const models = [...modelMap.values()]
+      .sort((a, b) => b.tokens - a.tokens)
+      .map((item, index) => ({
+        ...item,
+        averageLatency: item.latencySamples
+          ? Math.round(item.latency / item.latencySamples)
+          : 0,
+        color: MODEL_COLORS[index % MODEL_COLORS.length],
+      }));
+
+    return Response.json({
+      totals: {
+        requests: measuredRequests,
+        inputTokens: totalInput,
+        outputTokens: totalOutput,
+        totalTokens: totalInput + totalOutput,
+        averageLatency: latencySamples
+          ? Math.round(totalLatency / latencySamples)
+          : 0,
+        averageTtft: ttftSamples ? Math.round(totalTtft / ttftSamples) : 0,
+        activeDays: daily.filter((item) => item.requests > 0).length,
+      },
+      daily: daily.map(({ latencySamples: samples, ...item }) => ({
+        ...item,
+        latency: samples ? Math.round(item.latency / samples) : 0,
+      })),
+      models,
+      hours,
+      latencyBuckets,
+      generatedAt: now.toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof ChatbotError) {
+      return error.toResponse();
+    }
+    return new ChatbotError("offline:settings").toResponse();
+  }
+}

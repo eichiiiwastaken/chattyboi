@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertTriangleIcon, ChevronDownIcon, Copy } from "lucide-react";
+import {
+  AlertTriangleIcon,
+  BarChart3Icon,
+  ChevronDownIcon,
+  Copy,
+  SlidersHorizontalIcon,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +20,7 @@ import {
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
 import { ModelPickerContent } from "@/components/chat/model-picker";
+import { UsageDashboard } from "@/components/settings/usage-dashboard";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -97,6 +104,9 @@ function ModelSelectorCompact({
 export default function SettingsPage() {
   const { resolvedTheme, setTheme } = useTheme();
   const [origin, setOrigin] = useState("");
+  const [activeTab, setActiveTab] = useState<"preferences" | "usage">(
+    "preferences"
+  );
   const { data: settings, mutate } = useSWR<{
     defaultSearchModel: string | null;
     webSearchEnabled: boolean;
@@ -150,146 +160,182 @@ export default function SettingsPage() {
       <div className="flex items-center border-b border-border/40 px-4 py-3">
         <h1 className="text-lg font-semibold">Settings</h1>
       </div>
-      <div className="mx-auto w-full max-w-xl flex-1 space-y-8 p-6">
-        <section className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Chat Preferences
-          </h2>
+      <div className="border-b border-border/40 px-4">
+        <div className="mx-auto flex w-full max-w-6xl gap-1">
+          <button
+            className={`relative flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors ${activeTab === "preferences" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setActiveTab("preferences")}
+            type="button"
+          >
+            <SlidersHorizontalIcon className="size-3.5" />
+            Preferences
+            {activeTab === "preferences" && (
+              <span className="absolute inset-x-2 -bottom-px h-px bg-foreground" />
+            )}
+          </button>
+          <button
+            className={`relative flex items-center gap-2 px-3 py-2.5 text-[13px] transition-colors ${activeTab === "usage" ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            onClick={() => setActiveTab("usage")}
+            type="button"
+          >
+            <BarChart3Icon className="size-3.5" />
+            Usage
+            {activeTab === "usage" && (
+              <span className="absolute inset-x-2 -bottom-px h-px bg-foreground" />
+            )}
+          </button>
+        </div>
+      </div>
+      <div
+        className={`mx-auto w-full flex-1 p-6 ${activeTab === "usage" ? "max-w-6xl" : "max-w-xl"}`}
+      >
+        {activeTab === "preferences" ? (
+          <div className="space-y-8">
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Chat Preferences
+              </h2>
 
-          <div className="space-y-6 rounded-xl border border-border/40 bg-card/50 p-5">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-[13px]" htmlFor="web-search-default">
-                  Enable web search by default
-                </Label>
-                <Switch
-                  checked={settings?.webSearchEnabled ?? false}
-                  disabled={!settings || isSaving}
-                  id="web-search-default"
-                  onCheckedChange={(checked) =>
-                    updateSetting({ webSearchEnabled: checked })
-                  }
-                />
+              <div className="space-y-6 rounded-xl border border-border/40 bg-card/50 p-5">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[13px]" htmlFor="web-search-default">
+                      Enable web search by default
+                    </Label>
+                    <Switch
+                      checked={settings?.webSearchEnabled ?? false}
+                      disabled={!settings || isSaving}
+                      id="web-search-default"
+                      onCheckedChange={(checked) =>
+                        updateSetting({ webSearchEnabled: checked })
+                      }
+                    />
+                  </div>
+                  <p className="text-[12px] text-muted-foreground">
+                    When starting a new chat, web search will be enabled
+                    automatically.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[13px]" htmlFor="stats-for-nerds">
+                      Show stats for nerds
+                    </Label>
+                    <Switch
+                      checked={settings?.statsForNerds ?? false}
+                      disabled={!settings || isSaving}
+                      id="stats-for-nerds"
+                      onCheckedChange={(checked) =>
+                        updateSetting({ statsForNerds: checked })
+                      }
+                    />
+                  </div>
+                  <p className="text-[12px] text-muted-foreground">
+                    Display token usage, latency, and model info under assistant
+                    messages.
+                  </p>
+                </div>
               </div>
-              <p className="text-[12px] text-muted-foreground">
-                When starting a new chat, web search will be enabled
-                automatically.
-              </p>
-            </div>
+            </section>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-[13px]" htmlFor="stats-for-nerds">
-                  Show stats for nerds
-                </Label>
-                <Switch
-                  checked={settings?.statsForNerds ?? false}
-                  disabled={!settings || isSaving}
-                  id="stats-for-nerds"
-                  onCheckedChange={(checked) =>
-                    updateSetting({ statsForNerds: checked })
-                  }
-                />
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Appearance
+              </h2>
+              <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-[13px]" htmlFor="light-mode">
+                    Light mode
+                  </Label>
+                  <Switch
+                    checked={resolvedTheme === "light"}
+                    id="light-mode"
+                    onCheckedChange={(checked) =>
+                      setTheme(checked ? "light" : "dark")
+                    }
+                  />
+                </div>
               </div>
-              <p className="text-[12px] text-muted-foreground">
-                Display token usage, latency, and model info under assistant
-                messages.
-              </p>
-            </div>
-          </div>
-        </section>
+            </section>
 
-        <section className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Appearance
-          </h2>
-          <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
-            <div className="flex items-center justify-between">
-              <Label className="text-[13px]" htmlFor="light-mode">
-                Light mode
-              </Label>
-              <Switch
-                checked={resolvedTheme === "light"}
-                id="light-mode"
-                onCheckedChange={(checked) =>
-                  setTheme(checked ? "light" : "dark")
-                }
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Default Model for Bang URLs
-          </h2>
-          <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
-            <div className="space-y-2">
-              <Label className="text-[13px]">
-                Default model used when starting a chat from a bang URL
-              </Label>
-              <ModelSelectorCompact
-                onModelChange={(modelId) =>
-                  updateSetting({ defaultSearchModel: modelId })
-                }
-                selectedModelId={
-                  settings?.defaultSearchModel ?? "opencodego/kimi-k2.6"
-                }
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Bang URLs
-          </h2>
-          <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
-            <p className="text-[12px] text-muted-foreground">
-              Use these URLs as custom search engines or DuckDuckGo bangs to
-              start a chat from anywhere. The default model above applies when a
-              chat starts from either URL.
-            </p>
-            <div className="space-y-2">
-              <Label className="text-[13px]">Chat (no search)</Label>
-              <div className="flex items-center gap-1">
-                <code className="flex-1 rounded-md bg-muted px-3 py-2 text-[12px] text-muted-foreground">
-                  {`${origin}/?q=%s`}
-                </code>
-                <Button
-                  onClick={async () => {
-                    await copyToClipboard(`${window.location.origin}/?q=%s`);
-                    toast.success("Copied to clipboard!");
-                  }}
-                  size="icon-xs"
-                  variant="ghost"
-                >
-                  <Copy className="size-3" />
-                </Button>
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Default Model for Bang URLs
+              </h2>
+              <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
+                <div className="space-y-2">
+                  <Label className="text-[13px]">
+                    Default model used when starting a chat from a bang URL
+                  </Label>
+                  <ModelSelectorCompact
+                    onModelChange={(modelId) =>
+                      updateSetting({ defaultSearchModel: modelId })
+                    }
+                    selectedModelId={
+                      settings?.defaultSearchModel ?? "opencodego/kimi-k2.6"
+                    }
+                  />
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-[13px]">Chat with web search</Label>
-              <div className="flex items-center gap-1">
-                <code className="flex-1 rounded-md bg-muted px-3 py-2 text-[12px] text-muted-foreground">
-                  {`${origin}/?q=%s&search=true`}
-                </code>
-                <Button
-                  onClick={async () => {
-                    await copyToClipboard(
-                      `${window.location.origin}/?q=%s&search=true`
-                    );
-                    toast.success("Copied to clipboard!");
-                  }}
-                  size="icon-xs"
-                  variant="ghost"
-                >
-                  <Copy className="size-3" />
-                </Button>
+            </section>
+
+            <section className="space-y-4">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                Bang URLs
+              </h2>
+              <div className="space-y-3 rounded-xl border border-border/40 bg-card/50 p-5">
+                <p className="text-[12px] text-muted-foreground">
+                  Use these URLs as custom search engines or DuckDuckGo bangs to
+                  start a chat from anywhere. The default model above applies
+                  when a chat starts from either URL.
+                </p>
+                <div className="space-y-2">
+                  <Label className="text-[13px]">Chat (no search)</Label>
+                  <div className="flex items-center gap-1">
+                    <code className="flex-1 rounded-md bg-muted px-3 py-2 text-[12px] text-muted-foreground">
+                      {`${origin}/?q=%s`}
+                    </code>
+                    <Button
+                      onClick={async () => {
+                        await copyToClipboard(
+                          `${window.location.origin}/?q=%s`
+                        );
+                        toast.success("Copied to clipboard!");
+                      }}
+                      size="icon-xs"
+                      variant="ghost"
+                    >
+                      <Copy className="size-3" />
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[13px]">Chat with web search</Label>
+                  <div className="flex items-center gap-1">
+                    <code className="flex-1 rounded-md bg-muted px-3 py-2 text-[12px] text-muted-foreground">
+                      {`${origin}/?q=%s&search=true`}
+                    </code>
+                    <Button
+                      onClick={async () => {
+                        await copyToClipboard(
+                          `${window.location.origin}/?q=%s&search=true`
+                        );
+                        toast.success("Copied to clipboard!");
+                      }}
+                      size="icon-xs"
+                      variant="ghost"
+                    >
+                      <Copy className="size-3" />
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
           </div>
-        </section>
+        ) : (
+          <UsageDashboard />
+        )}
       </div>
     </div>
   );

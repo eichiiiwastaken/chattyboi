@@ -358,6 +358,25 @@ export async function getMessagesByChatId({ id }: { id: string }) {
   }
 }
 
+export async function getUsageMessagesByUserId({ userId }: { userId: string }) {
+  try {
+    return await db
+      .select({
+        createdAt: message.createdAt,
+        metadata: message.metadata,
+      })
+      .from(message)
+      .innerJoin(chat, eq(message.chatId, chat.id))
+      .where(and(eq(chat.userId, userId), eq(message.role, "assistant")))
+      .orderBy(asc(message.createdAt));
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get usage by user id"
+    );
+  }
+}
+
 export async function voteMessage({
   chatId,
   messageId,

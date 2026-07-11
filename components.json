@@ -16,5 +16,8 @@
     "ui": "@/components/ui",
     "lib": "@/lib",
     "hooks": "@/hooks"
+  },
+  "registries": {
+    "@dither-kit": "https://tripwire.sh/r/{name}.json"
   }
 }

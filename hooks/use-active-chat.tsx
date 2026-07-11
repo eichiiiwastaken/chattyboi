@@ -212,9 +212,15 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }
   }, [settings, isNewChat]);
 
-  const initialMessages: ChatMessage[] = isNewChat
-    ? []
-    : (chatData?.messages ?? []);
+  // Keep the messages passed to useChat referentially stable. In particular,
+  // `chatData` is briefly undefined while navigating a newly submitted chat to
+  // its permanent URL. Creating a new empty array on every render makes
+  // useChat repeatedly synchronize its internal message store and can hit
+  // React's maximum update depth as a stream finishes.
+  const initialMessages = useMemo<ChatMessage[]>(
+    () => (isNewChat ? [] : (chatData?.messages ?? [])),
+    [chatData?.messages, isNewChat]
+  );
   const visibility: VisibilityType = isNewChat
     ? "private"
     : (chatData?.visibility ?? "private");

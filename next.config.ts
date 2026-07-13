@@ -47,6 +47,8 @@ const nextConfig: NextConfig = {
     ],
   },
   experimental: {
+    // Uploads accept files up to 20 MiB; leave room for multipart form-data overhead.
+    proxyClientMaxBodySize: "25mb",
     prefetchInlining: true,
     cachedNavigations: true,
     appNewScrollHandler: true,

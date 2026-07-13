@@ -47,6 +47,8 @@ type ChatData = {
   lastModelId: string | null;
 };
 
+const STOPPED_STREAM_RESUME_SUPPRESSION_MS = 10_000;
+
 type ActiveChatContextValue = {
   chatId: string;
   messages: ChatMessage[];
@@ -224,15 +226,16 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   const visibility: VisibilityType = isNewChat
     ? "private"
     : (chatData?.visibility ?? "private");
+  const manuallyStoppedChatIdsRef = useRef(new Map<string, number>());
 
   const {
     messages,
     setMessages,
     sendMessage,
     status,
-    stop,
+    stop: stopChat,
     regenerate,
-    resumeStream,
+    resumeStream: resumeChatStream,
     addToolApprovalResponse,
     error: chatError,
     clearError: clearChatError,
@@ -242,15 +245,20 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     generateId: generateUUID,
     sendAutomaticallyWhen: ({ messages: currentMessages }) => {
       const lastMessage = currentMessages.at(-1);
-      return (
+      const shouldSend =
         lastMessage?.parts?.some(
           (part) =>
             "state" in part &&
             part.state === "approval-responded" &&
             "approval" in part &&
             (part.approval as { approved?: boolean })?.approved === true
-        ) ?? false
-      );
+        ) ?? false;
+
+      if (shouldSend) {
+        manuallyStoppedChatIdsRef.current.delete(chatId);
+      }
+
+      return shouldSend;
     },
     transport: new DefaultChatTransport({
       api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
@@ -310,10 +318,35 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  const stop = useCallback<UseChatHelpers<ChatMessage>["stop"]>(() => {
+    // A delayed realtime stream-created event can arrive after the SDK has
+    // changed the local status back to ready. Remember the user's intent so
+    // that event cannot immediately reconnect the cancelled stream.
+    manuallyStoppedChatIdsRef.current.set(chatId, Date.now());
+    return stopChat();
+  }, [chatId, stopChat]);
+
+  const resumeStream = useCallback<UseChatHelpers<ChatMessage>["resumeStream"]>(
+    (...args) => {
+      const stoppedAt = manuallyStoppedChatIdsRef.current.get(chatId);
+      if (stoppedAt !== undefined) {
+        if (Date.now() - stoppedAt < STOPPED_STREAM_RESUME_SUPPRESSION_MS) {
+          return Promise.resolve();
+        }
+
+        manuallyStoppedChatIdsRef.current.delete(chatId);
+      }
+
+      return resumeChatStream(...args);
+    },
+    [chatId, resumeChatStream]
+  );
+
   const sendMessageWithErrorReset = useCallback<
     UseChatHelpers<ChatMessage>["sendMessage"]
   >(
     (...args) => {
+      manuallyStoppedChatIdsRef.current.delete(chatId);
       clearGenerationError();
       clearChatError();
       const sendPromise = sendMessage(...args);
@@ -323,6 +356,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     [
       clearChatError,
       clearGenerationError,
+      chatId,
       sendMessage,
       setGenerationErrorFromUnknown,
     ]
@@ -332,6 +366,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     UseChatHelpers<ChatMessage>["regenerate"]
   >(
     (...args) => {
+      manuallyStoppedChatIdsRef.current.delete(chatId);
       clearGenerationError();
       clearChatError();
       const regeneratePromise = regenerate(...args);
@@ -341,6 +376,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     [
       clearChatError,
       clearGenerationError,
+      chatId,
       regenerate,
       setGenerationErrorFromUnknown,
     ]

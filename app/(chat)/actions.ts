@@ -23,13 +23,16 @@ export async function saveChatModelAsCookie(model: string) {
 
 export async function generateTitleFromUserMessage({
   message,
+  abortSignal,
 }: {
   message: UIMessage;
+  abortSignal?: AbortSignal;
 }) {
   const { text } = await generateText({
     model: getTitleModel(),
     system: titlePrompt,
     prompt: getTextFromMessage(message),
+    abortSignal,
   });
   return text
     .replace(/^[#*"\s]+/, "")

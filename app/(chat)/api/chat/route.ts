@@ -280,7 +280,7 @@ export async function POST(request: Request) {
     const chat = isOneTimeChat ? null : await getChatById({ id });
     let messagesFromDb: DBMessage[] = [];
     let regeneratedUserMessage: ChatMessage | null = null;
-    let titlePromise: Promise<string> | null = null;
+    let titlePromise: Promise<string | null> | null = null;
     let shouldGenerateTitle = false;
 
     if (chat) {
@@ -471,7 +471,16 @@ export async function POST(request: Request) {
     }
 
     if (shouldGenerateTitle && message?.role === "user") {
-      titlePromise = generateTitleFromUserMessage({ message });
+      titlePromise = generateTitleFromUserMessage({
+        message,
+        abortSignal: request.signal,
+      }).catch((error: unknown) => {
+        if (request.signal.aborted) {
+          return null;
+        }
+
+        throw error;
+      });
     }
 
     const models = await getAllModels();
@@ -552,6 +561,7 @@ export async function POST(request: Request) {
           model: getLanguageModel(chatModel),
           system: baseSystemPrompt,
           messages: modelMessages,
+          abortSignal: request.signal,
           stopWhen: canUseWebSearch ? stepCountIs(2) : stepCountIs(5),
           tools: canUseWebSearch ? { webSearch } : undefined,
           toolChoice: canUseWebSearch ? "auto" : "none",
@@ -622,6 +632,10 @@ export async function POST(request: Request) {
 
         if (titlePromise) {
           const title = await titlePromise;
+          if (title === null) {
+            return;
+          }
+
           dataStream.write({ type: "data-chat-title", data: title });
           await updateChatTitleById({ chatId: id, title });
           await publishChatEvent({

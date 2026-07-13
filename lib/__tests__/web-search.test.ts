@@ -9,6 +9,7 @@ describe("web search", () => {
   });
 
   it("uses Exa when EXA_API_KEY is configured", async () => {
+    const abortController = new AbortController();
     vi.stubEnv("EXA_API_KEY", "exa-test-key");
     vi.stubEnv("TAVILY_API_KEY", "tavily-test-key");
     vi.stubGlobal(
@@ -26,7 +27,9 @@ describe("web search", () => {
       )
     );
 
-    await expect(searchWeb("current news")).resolves.toEqual({
+    await expect(
+      searchWeb("current news", { abortSignal: abortController.signal })
+    ).resolves.toEqual({
       query: "current news",
       results: [
         {
@@ -44,8 +47,29 @@ describe("web search", () => {
           "Content-Type": "application/json",
           "x-api-key": "exa-test-key",
         },
+        signal: abortController.signal,
       })
     );
+  });
+
+  it("propagates cancellation instead of turning it into a search error", async () => {
+    const abortController = new AbortController();
+    const abortError = new DOMException(
+      "This operation was aborted",
+      "AbortError"
+    );
+    vi.stubEnv("EXA_API_KEY", "exa-test-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        abortController.abort();
+        throw abortError;
+      })
+    );
+
+    await expect(
+      searchWeb("current news", { abortSignal: abortController.signal })
+    ).rejects.toBe(abortError);
   });
 
   it("can force Tavily with WEB_SEARCH_PROVIDER", async () => {

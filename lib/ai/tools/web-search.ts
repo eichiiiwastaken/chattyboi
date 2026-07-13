@@ -16,6 +16,9 @@ type ExaResult = {
 };
 
 type SearchProvider = "exa" | "tavily";
+type SearchWebOptions = {
+  abortSignal?: AbortSignal;
+};
 type SearchResult = {
   title: string;
   url: string;
@@ -150,7 +153,8 @@ function searchConfigurationError(
 }
 
 async function searchWithTavily(
-  normalizedQuery: string
+  normalizedQuery: string,
+  abortSignal?: AbortSignal
 ): Promise<SearchWebResult> {
   if (!hasUsableEnvValue(process.env.TAVILY_API_KEY)) {
     return {
@@ -173,8 +177,12 @@ async function searchWithTavily(
         query: normalizedQuery,
         max_results: 5,
       }),
+      signal: abortSignal,
     });
   } catch (error) {
+    if (abortSignal?.aborted) {
+      throw error;
+    }
     console.error("Tavily search request could not be sent", { error });
     return connectionSearchError(normalizedQuery, "tavily");
   }
@@ -205,7 +213,8 @@ async function searchWithTavily(
 }
 
 async function searchWithExa(
-  normalizedQuery: string
+  normalizedQuery: string,
+  abortSignal?: AbortSignal
 ): Promise<SearchWebResult> {
   if (!hasUsableEnvValue(process.env.EXA_API_KEY)) {
     return {
@@ -233,8 +242,12 @@ async function searchWithExa(
           highlights: true,
         },
       }),
+      signal: abortSignal,
     });
   } catch (error) {
+    if (abortSignal?.aborted) {
+      throw error;
+    }
     console.error("Exa search request could not be sent", { error });
     return connectionSearchError(normalizedQuery, "exa");
   }
@@ -270,7 +283,10 @@ function getExaContent(result: ExaResult) {
   return highlights || result.text || result.summary || "";
 }
 
-export async function searchWeb(query: string): Promise<SearchWebResult> {
+export async function searchWeb(
+  query: string,
+  { abortSignal }: SearchWebOptions = {}
+): Promise<SearchWebResult> {
   const normalizedQuery = query.trim();
 
   if (!normalizedQuery || normalizedQuery.length > 300) {
@@ -289,11 +305,11 @@ export async function searchWeb(query: string): Promise<SearchWebResult> {
   const { provider } = configuredSearchProvider;
 
   if (provider === "exa") {
-    return await searchWithExa(normalizedQuery);
+    return await searchWithExa(normalizedQuery, abortSignal);
   }
 
   if (provider === "tavily") {
-    return await searchWithTavily(normalizedQuery);
+    return await searchWithTavily(normalizedQuery, abortSignal);
   }
 
   return searchConfigurationError(
@@ -314,5 +330,6 @@ export const webSearch = tool({
         "The search query to run. Rewrite the user's request into the best web search query."
       ),
   }),
-  execute: async ({ query }) => searchWeb(query),
+  execute: async ({ query }, { abortSignal }) =>
+    searchWeb(query, { abortSignal }),
 });

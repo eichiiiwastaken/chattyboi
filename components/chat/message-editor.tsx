@@ -2,17 +2,19 @@
 
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { deleteTrailingMessages } from "@/app/(chat)/actions";
-import type { ChatMessage } from "@/lib/types";
+import type { Attachment, ChatMessage } from "@/lib/types";
 
 export async function submitEditedMessage({
   message,
   text,
+  attachments = [],
   setMessages,
   regenerate,
   skipPersistence = false,
 }: {
   message: ChatMessage;
   text: string;
+  attachments?: Attachment[];
   setMessages: UseChatHelpers<ChatMessage>["setMessages"];
   regenerate: UseChatHelpers<ChatMessage>["regenerate"];
   skipPersistence?: boolean;
@@ -29,7 +31,18 @@ export async function submitEditedMessage({
 
     return [
       ...messages.slice(0, index),
-      { ...message, parts: [{ type: "text" as const, text }] },
+      {
+        ...message,
+        parts: [
+          ...attachments.map((attachment) => ({
+            type: "file" as const,
+            url: attachment.url,
+            filename: attachment.name,
+            mediaType: attachment.contentType,
+          })),
+          { type: "text" as const, text },
+        ],
+      },
     ];
   });
 

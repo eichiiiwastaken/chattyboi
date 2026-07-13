@@ -111,6 +111,13 @@ export function PureMessageActions({
       >
         <CopyIcon />
       </Action>
+      {onBranch && (
+        <BranchMenu
+          message={message}
+          onBranch={onBranch}
+          selectedModelId={selectedModelId}
+        />
+      )}
       {onRetry && (
         <RetryMenu
           message={message}

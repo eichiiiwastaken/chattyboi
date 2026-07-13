@@ -19,7 +19,7 @@ function message(
 }
 
 describe("copyMessagesForBranch", () => {
-  it("copies context through the selected user message with fresh ids", () => {
+  it("copies context through the selected message with fresh ids", () => {
     const sourceMessages = [
       message("user-1", "user", new Date("2026-01-01T00:00:00Z")),
       message("assistant-1", "assistant", new Date("2026-01-01T00:00:01Z")),
@@ -48,16 +48,18 @@ describe("copyMessagesForBranch", () => {
     expect(result.messages.at(-1)?.parts).toEqual(sourceMessages[2]?.parts);
   });
 
-  it("only branches from user messages", () => {
-    expect(() =>
-      copyMessagesForBranch({
-        sourceMessages: [
-          message("assistant-1", "assistant", new Date("2026-01-01T00:00:00Z")),
-        ],
-        sourceBranchMessageId: "assistant-1",
-        newChatId: "branched-chat",
-        generateId: () => "copy-1",
-      })
-    ).toThrow("Branch message not found");
+  it("copies from assistant messages too", () => {
+    const result = copyMessagesForBranch({
+      sourceMessages: [
+        message("user-1", "user", new Date("2026-01-01T00:00:00Z")),
+        message("assistant-1", "assistant", new Date("2026-01-01T00:00:01Z")),
+      ],
+      sourceBranchMessageId: "assistant-1",
+      newChatId: "branched-chat",
+      generateId: () => "copy-assistant",
+    });
+
+    expect(result.branchMessageId).toBe("copy-assistant");
+    expect(result.messages).toHaveLength(2);
   });
 });

@@ -166,7 +166,19 @@ export function ChatShell() {
         ?.filter((p) => p.type === "text")
         .map((p) => p.text)
         .join("");
+      const messageAttachments = msg.parts.flatMap((part) =>
+        part.type === "file"
+          ? [
+              {
+                name: part.filename ?? "file",
+                url: part.url,
+                contentType: part.mediaType,
+              },
+            ]
+          : []
+      );
       setInput(text ?? "");
+      setAttachments(messageAttachments);
       setEditingMessage(msg);
     },
     [setInput]
@@ -270,6 +282,7 @@ export function ChatShell() {
                           await submitEditedMessage({
                             message: msg,
                             text: input,
+                            attachments,
                             skipPersistence: isOneTimeChat,
                             setMessages,
                             regenerate,

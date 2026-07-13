@@ -395,11 +395,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     if (
       handledBranchRequestsRef.current.has(requestKey) ||
       status !== "ready" ||
-      !messages.some(
-        (currentMessage) =>
-          currentMessage.id === branchMessageId &&
-          currentMessage.role === "user"
-      )
+      !messages.some((currentMessage) => currentMessage.id === branchMessageId)
     ) {
       return;
     }

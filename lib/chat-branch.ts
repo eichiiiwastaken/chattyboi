@@ -16,7 +16,7 @@ export function copyMessagesForBranch({
   );
   const branchMessage = sourceMessages[branchIndex];
 
-  if (branchIndex < 0 || branchMessage?.role !== "user") {
+  if (branchIndex < 0 || !branchMessage) {
     throw new Error("Branch message not found");
   }
 

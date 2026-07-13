@@ -382,6 +382,47 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     ]
   );
 
+  const handledBranchRequestsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const branchMessageId = searchParams.get("branch");
+    const branchModelId = searchParams.get("model");
+
+    if (!(branchMessageId && branchModelId) || isNewChat || !chatData) {
+      return;
+    }
+
+    const requestKey = `${chatId}:${branchMessageId}`;
+    if (
+      handledBranchRequestsRef.current.has(requestKey) ||
+      status !== "ready" ||
+      !messages.some(
+        (currentMessage) =>
+          currentMessage.id === branchMessageId &&
+          currentMessage.role === "user"
+      )
+    ) {
+      return;
+    }
+
+    handledBranchRequestsRef.current.add(requestKey);
+    setCurrentModelId(branchModelId);
+    router.replace(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${chatId}`);
+    regenerateWithErrorReset({
+      messageId: branchMessageId,
+      body: { selectedChatModel: branchModelId },
+    });
+  }, [
+    chatData,
+    chatId,
+    isNewChat,
+    messages,
+    regenerateWithErrorReset,
+    router,
+    searchParams,
+    setCurrentModelId,
+    status,
+  ]);
+
   useEffect(() => {
     if (status === "error" && chatError) {
       setGenerationErrorFromUnknown(chatError);

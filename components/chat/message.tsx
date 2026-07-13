@@ -716,6 +716,7 @@ const PurePreviewMessage = ({
   selectedModelId,
   requiresScrollPadding: _requiresScrollPadding,
   onEdit,
+  onBranchMessage,
   onQuoteSelection,
   onRetryMessage,
   generationError,
@@ -734,6 +735,10 @@ const PurePreviewMessage = ({
   selectedModelId?: string;
   requiresScrollPadding: boolean;
   onEdit?: (message: ChatMessage) => void;
+  onBranchMessage?: (
+    message: ChatMessage,
+    modelId?: string
+  ) => Promise<void> | void;
   onQuoteSelection?: (text: string) => void;
   onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
   generationError?: GenerationError | null;
@@ -1068,6 +1073,7 @@ const PurePreviewMessage = ({
       isLoading={isLoading}
       key={`action-${message.id}`}
       message={message}
+      onBranch={onBranchMessage}
       onEdit={onEdit ? () => onEdit(message) : undefined}
       onRetry={onRetryMessage}
       selectedModelId={selectedModelId ?? ""}

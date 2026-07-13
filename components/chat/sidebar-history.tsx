@@ -119,6 +119,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
   const router = useRouter();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [pinningChatId, setPinningChatId] = useState<string | null>(null);
 
   const hasReachedEnd = paginatedChatHistories
     ? paginatedChatHistories.some((page) => page.hasMore === false)
@@ -169,29 +170,30 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
     }
   };
 
-  const handlePin = (chatId: string, pinnedAt: Date | null) => {
-    mutate(
-      (chatHistories) => {
-        if (chatHistories) {
-          return chatHistories.map((chatHistory) => ({
-            ...chatHistory,
-            chats: chatHistory.chats.map((chat) => {
-              if (chat.id === chatId) {
-                return {
-                  ...chat,
-                  pinnedAt,
-                };
-              }
-              return chat;
-            }),
-          }));
-        }
-      },
-      { revalidate: false }
-    );
+  const handlePin = async (chatId: string, pinnedAt: Date | null) => {
+    if (pinningChatId) {
+      return;
+    }
 
-    updateChatPinnedStatus({ chatId, pinnedAt });
-    toast.success(pinnedAt ? "Chat pinned" : "Chat unpinned");
+    setPinningChatId(chatId);
+    const optimisticHistory = paginatedChatHistories?.map((chatHistory) => ({
+      ...chatHistory,
+      chats: chatHistory.chats.map((chat) =>
+        chat.id === chatId ? { ...chat, pinnedAt } : chat
+      ),
+    }));
+
+    try {
+      await mutate(optimisticHistory, { revalidate: false });
+      await updateChatPinnedStatus({ chatId, pinnedAt });
+      await mutate();
+      toast.success(pinnedAt ? "Chat pinned" : "Chat unpinned");
+    } catch (_error) {
+      await mutate();
+      toast.error("Failed to update chat pin");
+    } finally {
+      setPinningChatId(null);
+    }
   };
 
   if (!user) {
@@ -293,6 +295,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isPinning={pinningChatId !== null}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -314,6 +317,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isPinning={pinningChatId !== null}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -335,6 +339,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isPinning={pinningChatId !== null}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -356,6 +361,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isPinning={pinningChatId !== null}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -377,6 +383,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isPinning={pinningChatId !== null}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);
@@ -398,6 +405,7 @@ export function SidebarHistory({ user }: { user: User | undefined }) {
                           <ChatItem
                             chat={chat}
                             isActive={chat.id === id}
+                            isPinning={pinningChatId !== null}
                             key={chat.id}
                             onDelete={(chatId) => {
                               setDeleteId(chatId);

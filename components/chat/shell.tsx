@@ -1,6 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useSWRConfig } from "swr";
+import { unstable_serialize } from "swr/infinite";
+import { branchChatFromMessage } from "@/app/(chat)/actions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +31,7 @@ import { DataStreamHandler } from "./data-stream-handler";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
+import { getChatHistoryPaginationKey } from "./sidebar-history";
 
 function setCookie(name: string, value: string) {
   const maxAge = 60 * 60 * 24 * 365;
@@ -34,6 +40,8 @@ function setCookie(name: string, value: string) {
 }
 
 export function ChatShell() {
+  const router = useRouter();
+  const { mutate } = useSWRConfig();
   const {
     chatId,
     messages,
@@ -164,6 +172,37 @@ export function ChatShell() {
     [setInput]
   );
 
+  const handleBranchMessage = useCallback(
+    async (message: ChatMessage, modelId?: string) => {
+      const branchModelId = modelId ?? currentModelId;
+      const toastId = toast.loading("Creating branch...");
+
+      try {
+        const branch = await branchChatFromMessage({
+          chatId,
+          messageId: message.id,
+          modelId: branchModelId,
+        });
+
+        setCookie("chat-model", branchModelId);
+        await mutate(unstable_serialize(getChatHistoryPaginationKey));
+
+        const params = new URLSearchParams({
+          branch: branch.messageId,
+          model: branch.modelId,
+        });
+        router.push(
+          `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${branch.chatId}?${params.toString()}`
+        );
+        toast.success("Branched into a new chat", { id: toastId });
+      } catch (error) {
+        console.error("[branch] Failed to branch chat:", error);
+        toast.error("Failed to branch chat", { id: toastId });
+      }
+    },
+    [chatId, currentModelId, mutate, router]
+  );
+
   return (
     <>
       <div className="flex h-dvh w-full flex-row overflow-hidden">
@@ -191,6 +230,7 @@ export function ChatShell() {
               isLoading={isLoading}
               isReadonly={isReadonly}
               messages={messages}
+              onBranchMessage={handleBranchMessage}
               onEditMessage={handleEditMessage}
               onQuoteSelection={handleQuoteSelection}
               onRetryMessage={handleRetryMessage}

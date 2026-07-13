@@ -148,6 +148,8 @@ export async function saveChatWithMessages({
     title: string;
     visibility: VisibilityType;
     lastModelId?: string | null;
+    branchedFromChatId?: string | null;
+    branchedFromMessageId?: string | null;
   };
   messages: DBMessage[];
 }) {
@@ -162,6 +164,8 @@ export async function saveChatWithMessages({
           title: chatInput.title,
           visibility: chatInput.visibility,
           lastModelId: chatInput.lastModelId ?? null,
+          branchedFromChatId: chatInput.branchedFromChatId ?? null,
+          branchedFromMessageId: chatInput.branchedFromMessageId ?? null,
         })
         .returning();
 

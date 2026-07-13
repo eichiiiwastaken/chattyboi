@@ -28,6 +28,10 @@ type MessagesProps = {
   isLoading?: boolean;
   selectedModelId: string;
   generationError: GenerationError | null;
+  onBranchMessage?: (
+    message: ChatMessage,
+    modelId?: string
+  ) => Promise<void> | void;
   onEditMessage?: (message: ChatMessage) => void;
   onQuoteSelection?: (text: string) => void;
   onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
@@ -47,6 +51,7 @@ function PureMessages({
   isLoading,
   selectedModelId,
   generationError,
+  onBranchMessage,
   onEditMessage,
   onQuoteSelection,
   onRetryMessage,
@@ -117,6 +122,7 @@ function PureMessages({
               key={message.id}
               message={message}
               messageSignature={getMessageRenderSignature(message)}
+              onBranchMessage={onBranchMessage}
               onEdit={onEditMessage}
               onQuoteSelection={onQuoteSelection}
               onRetryMessage={onRetryMessage}

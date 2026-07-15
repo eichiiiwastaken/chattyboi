@@ -77,4 +77,28 @@ describe("search answer fallback", () => {
       )
     ).toBe(true);
   });
+
+  it("adds a visible explanation when a normal turn finishes empty", async () => {
+    const output = await collect([{ type: "finish", finishReason: "length" }]);
+
+    expect(
+      output.some(
+        (chunk) =>
+          chunk.type === "text-delta" &&
+          chunk.delta.includes("context or output limit")
+      )
+    ).toBe(true);
+  });
+
+  it("adds a retry message when a stream closes without a finish event", async () => {
+    const output = await collect([]);
+
+    expect(
+      output.some(
+        (chunk) =>
+          chunk.type === "text-delta" &&
+          chunk.delta.includes("ended unexpectedly")
+      )
+    ).toBe(true);
+  });
 });

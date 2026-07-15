@@ -25,9 +25,11 @@ export function withSearchAnswerFallback(
   context: { chatId: string; modelId: string }
 ) {
   let sawSearchOutput = false;
+  let sawText = false;
   let sawTextAfterSearch = false;
   let searchAnswerLength = 0;
   let answerWasTruncated = false;
+  let sawFinish = false;
 
   return stream.pipeThrough(
     new TransformStream<InferUIMessageChunk<ChatMessage>>({
@@ -37,6 +39,10 @@ export function withSearchAnswerFallback(
           searchResultCount(chunk.output) > 0
         ) {
           sawSearchOutput = true;
+        }
+
+        if (chunk.type === "text-delta" && chunk.delta.trim().length > 0) {
+          sawText = true;
         }
 
         if (sawSearchOutput && chunk.type === "text-delta") {
@@ -56,14 +62,20 @@ export function withSearchAnswerFallback(
           return;
         }
 
-        if (chunk.type === "finish" && sawSearchOutput) {
-          if (!sawTextAfterSearch) {
+        if (chunk.type === "finish") {
+          sawFinish = true;
+
+          if (sawSearchOutput && !sawTextAfterSearch) {
             console.error("Search turn finished without answer text", context);
             enqueueNotice(
               controller,
               "I found search results, but the model finished without producing a visible answer. Please retry the message; the search results above did come back successfully."
             );
-          } else if (answerWasTruncated || chunk.finishReason === "length") {
+            sawText = true;
+          } else if (
+            sawSearchOutput &&
+            (answerWasTruncated || chunk.finishReason === "length")
+          ) {
             console.warn("Search answer was truncated", {
               ...context,
               finishReason: chunk.finishReason,
@@ -73,13 +85,48 @@ export function withSearchAnswerFallback(
               controller,
               "_This response reached its length limit and may be incomplete. Please ask a narrower follow-up or retry the question._"
             );
+          } else if (!sawText) {
+            console.error("Assistant turn finished without answer text", {
+              ...context,
+              finishReason: chunk.finishReason,
+            });
+            enqueueNotice(
+              controller,
+              getEmptyResponseNotice(chunk.finishReason)
+            );
+            sawText = true;
           }
         }
 
         controller.enqueue(chunk);
       },
+      flush(controller) {
+        if (sawFinish) {
+          return;
+        }
+
+        console.error("Assistant stream ended without a finish event", context);
+        enqueueNotice(
+          controller,
+          sawText
+            ? "\n\n_The response ended unexpectedly and may be incomplete. Please retry if anything is missing._"
+            : "The response ended unexpectedly before the model produced an answer. Your message was kept; please retry."
+        );
+      },
     })
   );
+}
+
+function getEmptyResponseNotice(finishReason: string | undefined) {
+  if (finishReason === "length") {
+    return "The model reached a context or output limit before it produced a visible answer. Your message was kept; please retry, or send the relevant PDFs in smaller batches.";
+  }
+
+  if (finishReason === "content-filter") {
+    return "The model stopped before producing a visible answer because its content filter was triggered. Try rephrasing the request.";
+  }
+
+  return "The model finished without producing a visible answer. Your message was kept; please retry. If this chat is very long, start a new chat or re-attach only the relevant files.";
 }
 
 function enqueueNotice(

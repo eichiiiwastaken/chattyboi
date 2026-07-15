@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { SharedV3ProviderOptions } from "@ai-sdk/provider";
 import { geolocation, ipAddress } from "@vercel/functions";
@@ -6,12 +6,18 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
+  pruneMessages,
   type StepResult,
   stepCountIs,
   streamText,
 } from "ai";
 import sharp from "sharp";
 import { auth, type UserType } from "@/app/(auth)/auth";
+import {
+  ChatContextLimitError,
+  limitChatFiles,
+  selectRecentChatMessages,
+} from "@/lib/ai/chat-context";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
 import {
   DEFAULT_CHAT_MODEL,
@@ -68,7 +74,7 @@ import {
 import { generateTitleFromUserMessage } from "../../actions";
 import { type PostRequestBody, postRequestBodySchema } from "./schema";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function searchResultCount(output: unknown) {
   if (
@@ -426,19 +432,6 @@ export async function POST(request: Request) {
       return providerConfigError.toResponse();
     }
 
-    if (shouldGenerateTitle && message?.role === "user") {
-      titlePromise = generateTitleFromUserMessage({
-        message,
-        abortSignal: request.signal,
-      }).catch((error: unknown) => {
-        if (request.signal.aborted) {
-          return null;
-        }
-
-        throw error;
-      });
-    }
-
     const models = await getAllModels();
     const modelName = models.find((m) => m.id === chatModel)?.name ?? chatModel;
 
@@ -448,8 +441,78 @@ export async function POST(request: Request) {
     const canUseWebSearch =
       webSearchEnabled === true && capabilities?.tools !== false;
 
+    const recentContext = selectRecentChatMessages(uiMessages);
+    const fileSizes = new Map<string, number | null>();
+    const localFileUrls = new Set(
+      recentContext.messages.flatMap((currentMessage) =>
+        currentMessage.parts.flatMap((part) =>
+          part.type === "file" && part.url?.startsWith("/uploads/")
+            ? [part.url]
+            : []
+        )
+      )
+    );
+
+    await Promise.all(
+      [...localFileUrls].map(async (url) => {
+        const filename = path.basename(url);
+        try {
+          if (!isSafeUploadFilename(filename)) {
+            fileSizes.set(url, null);
+            return;
+          }
+
+          const [metadata, fileStat] = await Promise.all([
+            readUploadMetadata(filename),
+            stat(getUploadPath(filename)),
+          ]);
+          fileSizes.set(
+            url,
+            metadata.userId === session.user.id && fileStat.size > 0
+              ? fileStat.size
+              : null
+          );
+        } catch {
+          fileSizes.set(url, null);
+        }
+      })
+    );
+
+    for (const currentMessage of recentContext.messages) {
+      for (const part of currentMessage.parts) {
+        if (part.type !== "file" || fileSizes.has(part.url)) {
+          continue;
+        }
+
+        if (part.url.startsWith("data:")) {
+          fileSizes.set(part.url, Math.ceil((part.url.length * 3) / 4));
+        } else {
+          // Remote URLs are uncommon in this app and cannot be measured without
+          // downloading them twice. Reserve a conservative amount of the file
+          // budget so they are still bounded.
+          fileSizes.set(part.url, 2 * 1024 * 1024);
+        }
+      }
+    }
+
+    let fileLimitedContext: ReturnType<typeof limitChatFiles>;
+    try {
+      fileLimitedContext = limitChatFiles({
+        fileSizes,
+        messages: recentContext.messages,
+      });
+    } catch (error) {
+      if (error instanceof ChatContextLimitError) {
+        throw new ChatbotError("bad_request:api", error.message);
+      }
+      throw error;
+    }
+
+    const contextWasTruncated =
+      recentContext.wasTruncated || fileLimitedContext.wasTruncated;
+
     const resolvedMessages = await Promise.all(
-      uiMessages.map(async (msg) => ({
+      fileLimitedContext.messages.map(async (msg) => ({
         ...msg,
         parts: await Promise.all(
           msg.parts.map(async (part) => {
@@ -501,17 +564,39 @@ export async function POST(request: Request) {
       }))
     );
 
-    const modelMessages = await convertToModelMessages(resolvedMessages);
+    const modelMessages = pruneMessages({
+      messages: await convertToModelMessages(resolvedMessages),
+      reasoning: "all",
+      toolCalls: "before-last-2-messages",
+      emptyMessages: "remove",
+    });
+
+    if (shouldGenerateTitle && message?.role === "user") {
+      titlePromise = generateTitleFromUserMessage({
+        message,
+        abortSignal: request.signal,
+      }).catch((error: unknown) => {
+        if (request.signal.aborted) {
+          return null;
+        }
+
+        throw error;
+      });
+    }
 
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
         const startTime = Date.now();
         let firstChunkTime: number | undefined;
-        const baseSystemPrompt = systemPrompt({
+        let baseSystemPrompt = systemPrompt({
           requestHints,
           webSearchEnabled: canUseWebSearch,
         });
+        if (contextWasTruncated) {
+          baseSystemPrompt +=
+            "\n\nSome older conversation content or attachments were omitted to fit the model's context limits. Answer from the available recent context. If the user asks about omitted information, explain that they should re-attach or paste the relevant material.";
+        }
 
         const result = streamText({
           model: getLanguageModel(chatModel),

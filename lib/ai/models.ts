@@ -59,6 +59,12 @@ export type ChatModel = {
   name: string;
   provider: string;
   description: string;
+  pricing?: ModelPricing;
+};
+
+export type ModelPricing = {
+  inputPerMillion: number;
+  outputPerMillion: number;
 };
 
 const MAX_MODELS_TOTAL = 80;
@@ -370,14 +376,11 @@ type OpenRouterRawModel = {
   id: string;
   name?: string;
   architecture?: { input_modalities?: string[] };
+  pricing?: { prompt?: string; completion?: string };
   supported_parameters?: string[];
 };
 
 async function fetchOpenRouterRawData(): Promise<OpenRouterRawModel[]> {
-  if (!isProviderConfigured("openrouter")) {
-    return [];
-  }
-
   try {
     const res = await fetch("https://openrouter.ai/api/v1/models", {
       next: { revalidate: 86_400 },
@@ -390,6 +393,54 @@ async function fetchOpenRouterRawData(): Promise<OpenRouterRawModel[]> {
   } catch {
     return [];
   }
+}
+
+function parsePricing(modelData: OpenRouterRawModel): ModelPricing | undefined {
+  const inputPerToken = Number(modelData.pricing?.prompt);
+  const outputPerToken = Number(modelData.pricing?.completion);
+
+  if (
+    !Number.isFinite(inputPerToken) ||
+    !Number.isFinite(outputPerToken) ||
+    (inputPerToken === 0 && outputPerToken === 0)
+  ) {
+    return undefined;
+  }
+
+  return {
+    inputPerMillion: inputPerToken * 1_000_000,
+    outputPerMillion: outputPerToken * 1_000_000,
+  };
+}
+
+function findRawModel(
+  modelId: string,
+  models: OpenRouterRawModel[]
+): OpenRouterRawModel | undefined {
+  const shortId = modelId.replace(/^(opencodego|openrouter)\//, "");
+
+  return (
+    models.find((model) => model.id === shortId) ??
+    models.find((model) => model.id.endsWith(`/${shortId}`))
+  );
+}
+
+function pricingForModel(
+  modelId: string,
+  models: OpenRouterRawModel[]
+): ModelPricing | undefined {
+  const rawModel = findRawModel(modelId, models);
+  return rawModel ? parsePricing(rawModel) : undefined;
+}
+
+export async function getEstimatedPricingForModelIds(modelIds: string[]) {
+  const rawModels = await fetchOpenRouterRawData();
+
+  return Object.fromEntries(
+    modelIds
+      .map((modelId) => [modelId, pricingForModel(modelId, rawModels)])
+      .filter(([, pricing]) => pricing !== undefined)
+  ) as Record<string, ModelPricing>;
 }
 
 function parseCapabilities(modelData: OpenRouterRawModel): ModelCapabilities {
@@ -491,9 +542,14 @@ export async function fetchAllModelData(): Promise<{
     capabilities[model.id] = inferOpenAICapabilities(shortName);
   }
 
+  const modelsWithPricing = allModels.map((model) => ({
+    ...model,
+    pricing: pricingForModel(model.id, openRouterRawData),
+  }));
+
   return {
-    allModels,
-    capabilities: capabilitiesForModels(capabilities, allModels),
+    allModels: modelsWithPricing,
+    capabilities: capabilitiesForModels(capabilities, modelsWithPricing),
   };
 }
 

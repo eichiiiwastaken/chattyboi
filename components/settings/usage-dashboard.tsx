@@ -35,6 +35,8 @@ type UsageData = {
     averageLatency: number;
     averageTtft: number;
     activeDays: number;
+    estimatedCost: number;
+    pricedTokens: number;
   };
   daily: Array<{
     date: string;
@@ -46,10 +48,14 @@ type UsageData = {
   }>;
   models: Array<{
     model: string;
+    inputTokens: number;
+    outputTokens: number;
     tokens: number;
     requests: number;
     averageLatency: number;
     color: DitherColor;
+    estimatedCost?: number;
+    pricing?: { inputPerMillion: number; outputPerMillion: number };
   }>;
   hours: Array<{ hour: number; requests: number }>;
   latencyBuckets: Array<{ bucket: string; requests: number }>;
@@ -81,6 +87,18 @@ function duration(value: number) {
   return value < 1000
     ? `${Math.round(value)}ms`
     : `${(value / 1000).toFixed(1)}s`;
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value < 1 ? 3 : 2,
+  }).format(value);
+}
+
+function rate(value: number) {
+  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 3 })}`;
 }
 
 function UsageCard({
@@ -201,7 +219,7 @@ export function UsageDashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <UsageCard
           color="blue"
           icon={SparklesIcon}
@@ -225,6 +243,18 @@ export function UsageDashboard() {
           note="End-to-end generation time"
           series={recent.map((d) => d.latency)}
           value={duration(data.totals.averageLatency)}
+        />
+        <UsageCard
+          color="pink"
+          icon={ActivityIcon}
+          label="Est. cost"
+          note={
+            data.totals.pricedTokens
+              ? `Based on ${compact(data.totals.pricedTokens)} priced tokens`
+              : "No matching public price found"
+          }
+          series={[]}
+          value={money(data.totals.estimatedCost)}
         />
         <UsageCard
           color="purple"
@@ -352,6 +382,12 @@ export function UsageDashboard() {
                     </th>
                     <th className="px-4 py-2 text-right font-medium">Tokens</th>
                     <th className="px-4 py-2 text-right font-medium">
+                      Est. cost
+                    </th>
+                    <th className="px-4 py-2 text-right font-medium">
+                      Rate / 1M
+                    </th>
+                    <th className="px-4 py-2 text-right font-medium">
                       Avg. time
                     </th>
                   </tr>
@@ -369,6 +405,16 @@ export function UsageDashboard() {
                         {compact(model.tokens)}
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                        {model.estimatedCost === undefined
+                          ? "—"
+                          : money(model.estimatedCost)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-[11px] text-muted-foreground">
+                        {model.pricing
+                          ? `${rate(model.pricing.inputPerMillion)} in · ${rate(model.pricing.outputPerMillion)} out`
+                          : "Unavailable"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                         {duration(model.averageLatency)}
                       </td>
                     </tr>
@@ -380,7 +426,9 @@ export function UsageDashboard() {
         </>
       )}
       <p className="text-center text-[10px] text-muted-foreground">
-        Metrics are calculated from saved assistant responses. Times use UTC.
+        Costs are estimates using current public list prices and saved token
+        counts; provider routing, cached tokens, and tools may change the billed
+        amount.
       </p>
     </div>
   );

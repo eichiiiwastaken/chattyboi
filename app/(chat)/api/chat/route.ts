@@ -6,7 +6,6 @@ import {
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
-  type InferUIMessageChunk,
   type StepResult,
   stepCountIs,
   streamText,
@@ -29,6 +28,10 @@ import {
 } from "@/lib/ai/provider-config";
 import { getLanguageModel } from "@/lib/ai/providers";
 import type { ReasoningEffort } from "@/lib/ai/reasoning";
+import {
+  MAX_SEARCH_ANSWER_TOKENS,
+  withSearchAnswerFallback,
+} from "@/lib/ai/search-answer-fallback";
 import { webSearch } from "@/lib/ai/tools/web-search";
 import { getWebSearchStepSettings } from "@/lib/ai/web-search-step";
 
@@ -78,53 +81,6 @@ function searchResultCount(output: unknown) {
   }
 
   return 0;
-}
-
-function withSearchAnswerFallback(
-  stream: ReadableStream<InferUIMessageChunk<ChatMessage>>,
-  context: { chatId: string; modelId: string }
-) {
-  let sawSearchOutput = false;
-  let sawTextAfterSearch = false;
-
-  return stream.pipeThrough(
-    new TransformStream<InferUIMessageChunk<ChatMessage>>({
-      transform(chunk, controller) {
-        if (
-          chunk.type === "tool-output-available" &&
-          searchResultCount(chunk.output) > 0
-        ) {
-          sawSearchOutput = true;
-        }
-
-        if (
-          sawSearchOutput &&
-          chunk.type === "text-delta" &&
-          chunk.delta.trim().length > 0
-        ) {
-          sawTextAfterSearch = true;
-        }
-
-        if (chunk.type === "finish" && sawSearchOutput && !sawTextAfterSearch) {
-          const textId = generateUUID();
-          const fallbackText =
-            "I found search results, but the model finished without producing a visible answer. Please retry the message; the search results above did come back successfully.";
-
-          console.error("Search turn finished without answer text", context);
-
-          controller.enqueue({ type: "text-start", id: textId });
-          controller.enqueue({
-            type: "text-delta",
-            id: textId,
-            delta: fallbackText,
-          });
-          controller.enqueue({ type: "text-end", id: textId });
-        }
-
-        controller.enqueue(chunk);
-      },
-    })
-  );
 }
 
 function getFallbackTitleFromMessage(message: ChatMessage) {
@@ -562,6 +518,9 @@ export async function POST(request: Request) {
           system: baseSystemPrompt,
           messages: modelMessages,
           abortSignal: request.signal,
+          maxOutputTokens: canUseWebSearch
+            ? MAX_SEARCH_ANSWER_TOKENS
+            : undefined,
           stopWhen: canUseWebSearch ? stepCountIs(2) : stepCountIs(5),
           tools: canUseWebSearch ? { webSearch } : undefined,
           toolChoice: canUseWebSearch ? "auto" : "none",

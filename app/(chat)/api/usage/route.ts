@@ -1,4 +1,5 @@
 import { auth } from "@/app/(auth)/auth";
+import { getEstimatedPricingForModelIds } from "@/lib/ai/models";
 import { getUsageMessagesByUserId } from "@/lib/db/queries";
 import { ChatbotError } from "@/lib/errors";
 import { messageMetadataSchema } from "@/lib/types";
@@ -42,7 +43,10 @@ export async function GET() {
     const modelMap = new Map<
       string,
       {
+        id?: string;
         model: string;
+        inputTokens: number;
+        outputTokens: number;
         tokens: number;
         requests: number;
         latency: number;
@@ -96,21 +100,28 @@ export async function GET() {
       }
 
       hours[row.createdAt.getUTCHours()].requests += 1;
-      const model = meta.modelName ?? meta.modelId ?? "Unknown model";
-      const modelItem = modelMap.get(model) ?? {
+      const modelId = meta.modelId;
+      const model = meta.modelName ?? modelId ?? "Unknown model";
+      const modelKey = modelId ?? model;
+      const modelItem = modelMap.get(modelKey) ?? {
+        id: modelId,
         model,
+        inputTokens: 0,
+        outputTokens: 0,
         tokens: 0,
         requests: 0,
         latency: 0,
         latencySamples: 0,
       };
+      modelItem.inputTokens += input;
+      modelItem.outputTokens += output;
       modelItem.tokens += tokens;
       modelItem.requests += 1;
       if (meta.duration !== undefined) {
         modelItem.latency += meta.duration;
         modelItem.latencySamples += 1;
       }
-      modelMap.set(model, modelItem);
+      modelMap.set(modelKey, modelItem);
 
       if (meta.duration !== undefined) {
         totalLatency += meta.duration;
@@ -125,15 +136,36 @@ export async function GET() {
       }
     }
 
+    const pricing = await getEstimatedPricingForModelIds(
+      [...modelMap.values()]
+        .map((model) => model.id)
+        .filter((id): id is string => Boolean(id))
+    );
+    let estimatedCost = 0;
+    let pricedTokens = 0;
     const models = [...modelMap.values()]
       .sort((a, b) => b.tokens - a.tokens)
       .map((item, index) => ({
         ...item,
+        estimatedCost:
+          item.id && pricing[item.id]
+            ? (item.inputTokens * pricing[item.id].inputPerMillion +
+                item.outputTokens * pricing[item.id].outputPerMillion) /
+              1_000_000
+            : undefined,
+        pricing: item.id ? pricing[item.id] : undefined,
         averageLatency: item.latencySamples
           ? Math.round(item.latency / item.latencySamples)
           : 0,
         color: MODEL_COLORS[index % MODEL_COLORS.length],
-      }));
+      }))
+      .map((item) => {
+        if (item.pricing && item.estimatedCost !== undefined) {
+          estimatedCost += item.estimatedCost;
+          pricedTokens += item.inputTokens + item.outputTokens;
+        }
+        return item;
+      });
 
     return Response.json({
       totals: {
@@ -141,6 +173,8 @@ export async function GET() {
         inputTokens: totalInput,
         outputTokens: totalOutput,
         totalTokens: totalInput + totalOutput,
+        estimatedCost,
+        pricedTokens,
         averageLatency: latencySamples
           ? Math.round(totalLatency / latencySamples)
           : 0,

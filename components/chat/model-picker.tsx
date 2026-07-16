@@ -30,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getModelPreferenceBoost } from "@/lib/ai/model-preferences";
 import type { ChatModel, ModelCapabilities } from "@/lib/ai/models";
 import { cn } from "@/lib/utils";
 import { T3AttachIcon } from "./icons";
@@ -247,7 +248,7 @@ function sortProviders(a: string, b: string) {
 
 function getModelRank(model: ChatModel) {
   const text = `${model.id} ${model.name} ${model.provider}`.toLowerCase();
-  let rank = 0;
+  let rank = getModelPreferenceBoost(model.id);
 
   const rankPatterns: [RegExp, number][] = [
     [

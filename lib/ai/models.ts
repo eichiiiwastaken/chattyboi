@@ -1,5 +1,6 @@
 import { gateway } from "@ai-sdk/gateway";
 import { isTestEnvironment } from "@/lib/constants";
+import { getModelPreferenceBoost } from "./model-preferences";
 import { isGatewayConfigured, isProviderConfigured } from "./provider-config";
 
 export const DEFAULT_CHAT_MODEL = "opencodego/kimi-k2.6";
@@ -143,7 +144,9 @@ function providerSortIndex(provider: string) {
 
 function scoreModel(model: ChatModel) {
   const searchable = `${model.id} ${model.name} ${model.provider}`;
-  let score = model.id === DEFAULT_CHAT_MODEL ? 1000 : 0;
+  let score =
+    (model.id === DEFAULT_CHAT_MODEL ? 1000 : 0) +
+    getModelPreferenceBoost(model.id);
 
   for (const [pattern, value] of PREFERRED_MODEL_PATTERNS) {
     if (pattern.test(searchable)) {
@@ -471,7 +474,7 @@ function inferOpenAICapabilities(modelId: string): ModelCapabilities {
     tools: true,
     vision: hasVision || /o1|o3/.test(id),
     file: hasFiles,
-    reasoning: isOSeries,
+    reasoning: isOSeries || /gpt-5/.test(id),
   };
 }
 

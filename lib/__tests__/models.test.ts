@@ -143,4 +143,29 @@ describe("provider model discovery", () => {
       },
     ]);
   });
+
+  it("marks direct OpenAI GPT-5 models as reasoning-capable", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "");
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPENCODE_API_KEY", "");
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      const url = String(input);
+
+      return Promise.resolve({
+        json: () =>
+          Promise.resolve(
+            url.includes("api.openai.com")
+              ? { data: [{ id: "gpt-5.6-terra" }] }
+              : { data: [] }
+          ),
+        ok: true,
+      } as Response);
+    });
+    const { fetchAllModelData } = await import("../ai/models");
+
+    const { capabilities } = await fetchAllModelData();
+
+    expect(capabilities["openai/gpt-5.6-terra"]?.reasoning).toBe(true);
+  });
 });

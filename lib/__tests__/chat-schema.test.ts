@@ -49,4 +49,39 @@ describe("postRequestBodySchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects multiple text parts that exceed the aggregate text limit", () => {
+    const request = {
+      ...validRequest("hello"),
+      message: {
+        ...validRequest("hello").message,
+        parts: [
+          { type: "text", text: "a".repeat(MAX_CHAT_TEXT_LENGTH / 2 + 1) },
+          { type: "text", text: "b".repeat(MAX_CHAT_TEXT_LENGTH / 2 + 1) },
+        ],
+      },
+    };
+
+    expect(postRequestBodySchema.safeParse(request).success).toBe(false);
+  });
+
+  it("accepts an attachment-only message with an empty text part", () => {
+    const request = {
+      ...validRequest(""),
+      message: {
+        ...validRequest("").message,
+        parts: [
+          {
+            type: "file",
+            mediaType: "application/pdf",
+            filename: "notes.pdf",
+            url: "/uploads/notes.pdf",
+          },
+          { type: "text", text: "" },
+        ],
+      },
+    };
+
+    expect(postRequestBodySchema.safeParse(request).success).toBe(true);
+  });
 });

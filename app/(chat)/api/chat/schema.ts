@@ -1,11 +1,12 @@
 import { z } from "zod";
+import { MAX_CONTEXT_FILES, MAX_CONTEXT_MESSAGES } from "@/lib/ai/chat-context";
 import { REASONING_EFFORTS } from "@/lib/ai/reasoning";
 
 export const MAX_CHAT_TEXT_LENGTH = 100_000;
 
 const textPartSchema = z.object({
   type: z.enum(["text"]),
-  text: z.string().min(1).max(MAX_CHAT_TEXT_LENGTH),
+  text: z.string().max(MAX_CHAT_TEXT_LENGTH),
 });
 
 const filePartSchema = z.object({
@@ -17,11 +18,50 @@ const filePartSchema = z.object({
 
 const partSchema = z.union([textPartSchema, filePartSchema]);
 
-const userMessageSchema = z.object({
-  id: z.string().uuid(),
-  role: z.enum(["user"]),
-  parts: z.array(partSchema),
-});
+const userMessageSchema = z
+  .object({
+    id: z.string().uuid(),
+    role: z.enum(["user"]),
+    parts: z
+      .array(partSchema)
+      .min(1)
+      .max(MAX_CONTEXT_FILES + 4),
+  })
+  .superRefine((message, context) => {
+    const textLength = message.parts.reduce(
+      (total, part) => total + (part.type === "text" ? part.text.length : 0),
+      0
+    );
+    const fileCount = message.parts.filter(
+      (part) => part.type === "file"
+    ).length;
+
+    if (textLength > MAX_CHAT_TEXT_LENGTH) {
+      context.addIssue({
+        code: "custom",
+        message: `Message text must be at most ${MAX_CHAT_TEXT_LENGTH} characters.`,
+      });
+    }
+
+    if (fileCount > MAX_CONTEXT_FILES) {
+      context.addIssue({
+        code: "custom",
+        message: `Please attach at most ${MAX_CONTEXT_FILES} files.`,
+      });
+    }
+
+    if (
+      fileCount === 0 &&
+      !message.parts.some(
+        (part) => part.type === "text" && part.text.trim().length > 0
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A message must contain text or an attachment.",
+      });
+    }
+  });
 
 const toolApprovalMessageSchema = z.object({
   id: z.string(),
@@ -32,7 +72,10 @@ const toolApprovalMessageSchema = z.object({
 export const postRequestBodySchema = z.object({
   id: z.string().uuid(),
   message: userMessageSchema.optional(),
-  messages: z.array(toolApprovalMessageSchema).optional(),
+  messages: z
+    .array(toolApprovalMessageSchema)
+    .max(MAX_CONTEXT_MESSAGES)
+    .optional(),
   trigger: z
     .enum(["submit-message", "regenerate-message", "resume-stream"])
     .optional(),
@@ -42,6 +85,7 @@ export const postRequestBodySchema = z.object({
   selectedVisibilityType: z.enum(["public", "private"]),
   webSearchEnabled: z.boolean().optional(),
   isOneTimeChat: z.boolean().optional(),
+  clientContextWasTruncated: z.boolean().optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

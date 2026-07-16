@@ -1,0 +1,1 @@
+CREATE INDEX "Message_v2_chat_created_id_idx" ON "Message_v2" USING btree ("chatId","createdAt","id");

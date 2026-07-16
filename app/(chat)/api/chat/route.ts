@@ -15,6 +15,7 @@ import { auth, type UserType } from "@/app/(auth)/auth";
 import {
   ChatContextLimitError,
   limitChatFiles,
+  MAX_CONTEXT_MESSAGES,
   selectRecentChatMessages,
 } from "@/lib/ai/chat-context";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
@@ -44,8 +45,9 @@ import {
   deleteChatById,
   deleteMessagesByChatIdAfterTimestamp,
   getChatById,
+  getMessageById,
   getMessageCountByUserId,
-  getMessagesByChatId,
+  getRecentMessagesByChatId,
   saveChat,
   saveMessages,
   updateChatLastModelById,
@@ -151,6 +153,12 @@ export async function POST(request: Request) {
     return new ChatbotError("bad_request:api").toResponse();
   }
 
+  let savedUserRequest: {
+    chatId: string;
+    modelId: string;
+    userId: string;
+  } | null = null;
+
   try {
     const {
       id,
@@ -163,6 +171,7 @@ export async function POST(request: Request) {
       selectedVisibilityType,
       webSearchEnabled,
       isOneTimeChat,
+      clientContextWasTruncated,
     } = requestBody;
 
     const session = await auth();
@@ -200,6 +209,7 @@ export async function POST(request: Request) {
 
     const chat = isOneTimeChat ? null : await getChatById({ id });
     let messagesFromDb: DBMessage[] = [];
+    let historyWasTruncated = false;
     let regeneratedUserMessage: ChatMessage | null = null;
     let titlePromise: Promise<string | null> | null = null;
     let shouldGenerateTitle = false;
@@ -208,25 +218,28 @@ export async function POST(request: Request) {
       if (chat.userId !== session.user.id) {
         return new ChatbotError("forbidden:chat").toResponse();
       }
-      messagesFromDb = await getMessagesByChatId({ id });
-
       if (isRegenerate && messageId) {
-        const messageToRegenerate = messagesFromDb.find(
-          (currentMessage) => currentMessage.id === messageId
-        );
+        const [messageToRegenerate] = await getMessageById({ id: messageId });
 
-        if (!messageToRegenerate) {
+        if (
+          !messageToRegenerate &&
+          !(message?.role === "user" && message.id === messageId)
+        ) {
           return new ChatbotError("bad_request:api").toResponse();
         }
 
-        await deleteMessagesByChatIdAfterTimestamp({
-          chatId: id,
-          timestamp: messageToRegenerate.createdAt,
-        });
+        if (messageToRegenerate) {
+          if (messageToRegenerate.chatId !== id) {
+            return new ChatbotError("bad_request:api").toResponse();
+          }
 
-        messagesFromDb = await getMessagesByChatId({ id });
+          await deleteMessagesByChatIdAfterTimestamp({
+            chatId: id,
+            timestamp: messageToRegenerate.createdAt,
+          });
+        }
 
-        if (messageToRegenerate.role === "user") {
+        if (messageToRegenerate?.role === "user" || !messageToRegenerate) {
           const retryMessage =
             messages?.find(
               (currentMessage) => currentMessage.id === messageId
@@ -239,6 +252,13 @@ export async function POST(request: Request) {
           regeneratedUserMessage = retryMessage as ChatMessage;
         }
       }
+
+      const recentMessages = await getRecentMessagesByChatId({
+        id,
+        limit: MAX_CONTEXT_MESSAGES,
+      });
+      messagesFromDb = recentMessages.messages;
+      historyWasTruncated = recentMessages.hasMore;
     } else if (!isOneTimeChat && message?.role === "user") {
       await saveChat({
         id,
@@ -353,6 +373,11 @@ export async function POST(request: Request) {
           createdAt: createdAt.toISOString(),
         },
       });
+      savedUserRequest = {
+        chatId: id,
+        modelId: chatModel,
+        userId: session.user.id,
+      };
     }
 
     if (missingProviderConfig) {
@@ -468,7 +493,10 @@ export async function POST(request: Request) {
     }
 
     const contextWasTruncated =
-      recentContext.wasTruncated || fileLimitedContext.wasTruncated;
+      historyWasTruncated ||
+      clientContextWasTruncated === true ||
+      recentContext.wasTruncated ||
+      fileLimitedContext.wasTruncated;
 
     const resolvedMessages = await Promise.all(
       fileLimitedContext.messages.map(async (msg) => ({
@@ -539,10 +567,12 @@ export async function POST(request: Request) {
           return null;
         }
 
-        throw error;
+        console.error("Failed to generate chat title:", error);
+        return getFallbackTitleFromMessage(message);
       });
     }
 
+    let streamErrorText: string | null = null;
     const stream = createUIMessageStream({
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
       execute: async ({ writer: dataStream }) => {
@@ -652,13 +682,33 @@ export async function POST(request: Request) {
         }
       },
       generateId: generateUUID,
-      onFinish: async ({ messages: finishedMessages }) => {
+      onFinish: async ({ messages: finishedMessages, responseMessage }) => {
         if (isOneTimeChat) {
           return;
         }
 
+        const messagesToPersist = finishedMessages.map((finishedMessage) => {
+          if (
+            !streamErrorText ||
+            finishedMessage.id !== responseMessage.id ||
+            finishedMessage.parts.some(
+              (part) => (part as { type?: string }).type === "error"
+            )
+          ) {
+            return finishedMessage;
+          }
+
+          return {
+            ...finishedMessage,
+            parts: [
+              ...finishedMessage.parts,
+              { type: "error", errorText: streamErrorText },
+            ],
+          } as ChatMessage;
+        });
+
         if (isToolApprovalFlow) {
-          for (const finishedMsg of finishedMessages) {
+          for (const finishedMsg of messagesToPersist) {
             const existingMsg = uiMessages.find((m) => m.id === finishedMsg.id);
             if (existingMsg) {
               await updateMessage({
@@ -682,10 +732,10 @@ export async function POST(request: Request) {
               });
             }
           }
-        } else if (finishedMessages.length > 0) {
+        } else if (messagesToPersist.length > 0) {
           const createdAt = new Date();
           await saveMessages({
-            messages: finishedMessages.map((currentMessage) => ({
+            messages: messagesToPersist.map((currentMessage) => ({
               id: currentMessage.id,
               role: currentMessage.role,
               parts: currentMessage.parts,
@@ -695,7 +745,7 @@ export async function POST(request: Request) {
               metadata: currentMessage.metadata as DBMessage["metadata"],
             })),
           });
-          for (const finishedMessage of finishedMessages) {
+          for (const finishedMessage of messagesToPersist) {
             if (finishedMessage.role !== "user") {
               await publishChatEvent({
                 userId: session.user.id,
@@ -724,10 +774,13 @@ export async function POST(request: Request) {
             "AI Gateway requires a valid credit card on file to service requests"
           )
         ) {
-          return "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
+          streamErrorText =
+            "AI Gateway requires a valid credit card on file to service requests. Please visit https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card to add a card and unlock your free credits.";
+          return streamErrorText;
         }
 
-        return detail ? `${errorMessage}\n${detail}` : errorMessage;
+        streamErrorText = detail ? `${errorMessage}\n${detail}` : errorMessage;
+        return streamErrorText;
       },
     });
 
@@ -762,6 +815,29 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const vercelId = request.headers.get("x-vercel-id");
+
+    if (savedUserRequest) {
+      const normalizedError = getErrorMessageFromUnknown(
+        error,
+        "The assistant response failed."
+      );
+      const errorText = normalizedError.detail
+        ? `${normalizedError.message}\n${normalizedError.detail}`
+        : normalizedError.message;
+
+      await saveAssistantErrorMessage({
+        chatId: savedUserRequest.chatId,
+        errorText,
+        modelId: savedUserRequest.modelId,
+        modelName: savedUserRequest.modelId,
+        userId: savedUserRequest.userId,
+      }).catch((persistenceError: unknown) => {
+        console.error(
+          "Failed to persist pre-stream chat error:",
+          persistenceError
+        );
+      });
+    }
 
     if (error instanceof ChatbotError) {
       return error.toResponse();

@@ -10,6 +10,7 @@ import {
   gte,
   inArray,
   lt,
+  or,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -358,6 +359,69 @@ export async function getMessagesByChatId({ id }: { id: string }) {
     throw new ChatbotError(
       "bad_request:database",
       "Failed to get messages by chat id"
+    );
+  }
+}
+
+export function getRecentMessagesByChatId({
+  id,
+  limit,
+}: {
+  id: string;
+  limit: number;
+}) {
+  return getMessagePageByChatId({ id, limit });
+}
+
+export async function getMessagePageByChatId({
+  id,
+  limit,
+  beforeMessageId,
+}: {
+  id: string;
+  limit: number;
+  beforeMessageId?: string;
+}) {
+  try {
+    let beforeCondition: SQL<unknown> | undefined;
+
+    if (beforeMessageId) {
+      const [cursor] = await db
+        .select({ createdAt: message.createdAt, id: message.id })
+        .from(message)
+        .where(and(eq(message.chatId, id), eq(message.id, beforeMessageId)))
+        .limit(1);
+
+      if (!cursor) {
+        return { hasMore: false, messages: [] };
+      }
+
+      beforeCondition = or(
+        lt(message.createdAt, cursor.createdAt),
+        and(eq(message.createdAt, cursor.createdAt), lt(message.id, cursor.id))
+      );
+    }
+
+    const rows = await db
+      .select()
+      .from(message)
+      .where(
+        beforeCondition
+          ? and(eq(message.chatId, id), beforeCondition)
+          : eq(message.chatId, id)
+      )
+      .orderBy(desc(message.createdAt), desc(message.id))
+      .limit(limit + 1);
+    const hasMore = rows.length > limit;
+
+    return {
+      hasMore,
+      messages: (hasMore ? rows.slice(0, limit) : rows).toReversed(),
+    };
+  } catch (_error) {
+    throw new ChatbotError(
+      "bad_request:database",
+      "Failed to get a page of messages by chat id"
     );
   }
 }

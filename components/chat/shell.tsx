@@ -72,6 +72,9 @@ export function ChatShell() {
     settings,
     isOneTimeChat,
     isNewChat,
+    hasMoreMessages,
+    isLoadingEarlierMessages,
+    loadEarlierMessages,
   } = useActiveChat();
 
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(
@@ -238,12 +241,15 @@ export function ChatShell() {
               addToolApprovalResponse={addToolApprovalResponse}
               chatId={chatId}
               generationError={generationError}
+              hasMoreMessages={hasMoreMessages}
               isArtifactVisible={isArtifactVisible}
               isLoading={isLoading}
+              isLoadingEarlierMessages={isLoadingEarlierMessages}
               isReadonly={isReadonly}
               messages={messages}
               onBranchMessage={handleBranchMessage}
               onEditMessage={handleEditMessage}
+              onLoadEarlierMessages={loadEarlierMessages}
               onQuoteSelection={handleQuoteSelection}
               onRetryMessage={handleRetryMessage}
               regenerate={regenerate}

@@ -16,12 +16,14 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import useSWR, { useSWRConfig } from "swr";
 import { unstable_serialize } from "swr/infinite";
 import { useDataStream } from "@/components/chat/data-stream-provider";
 import { getChatHistoryPaginationKey } from "@/components/chat/sidebar-history";
 import type { VisibilityType } from "@/components/chat/visibility-selector";
 import { useAutoResume } from "@/hooks/use-auto-resume";
+import { selectChatRequestMessages } from "@/lib/ai/chat-request";
 import { DEFAULT_CHAT_MODEL } from "@/lib/ai/models";
 import { isReasoningEffort, type ReasoningEffort } from "@/lib/ai/reasoning";
 import type { Settings, Vote } from "@/lib/db/schema";
@@ -40,6 +42,8 @@ export type GenerationError = {
 };
 
 type ChatData = {
+  hasMoreMessages: boolean;
+  oldestMessageId: string | null;
   messages: ChatMessage[];
   visibility: VisibilityType;
   userId: string | null;
@@ -81,6 +85,9 @@ type ActiveChatContextValue = {
   settings: Settings | null;
   isOneTimeChat: boolean;
   isNewChat: boolean;
+  hasMoreMessages: boolean;
+  isLoadingEarlierMessages: boolean;
+  loadEarlierMessages: () => Promise<boolean>;
 };
 
 const ActiveChatContext = createContext<ActiveChatContextValue | null>(null);
@@ -123,6 +130,8 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
   prevChatRouteKeyRef.current = currentChatRouteKey;
 
   const chatId = chatIdFromUrl ?? newChatIdRef.current;
+  const activeChatIdRef = useRef(chatId);
+  activeChatIdRef.current = chatId;
 
   const [currentModelId, setCurrentModelIdState] = useState(DEFAULT_CHAT_MODEL);
   const currentModelIdRef = useRef(currentModelId);
@@ -192,6 +201,26 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     fetcher,
     { revalidateOnFocus: false }
   );
+
+  const [messagePagination, setMessagePagination] = useState({
+    chatId: "",
+    hasMore: false,
+    isLoading: false,
+    oldestMessageId: null as string | null,
+  });
+
+  useEffect(() => {
+    if (!chatData || isNewChat || messagePagination.chatId === chatId) {
+      return;
+    }
+
+    setMessagePagination({
+      chatId,
+      hasMore: chatData.hasMoreMessages,
+      isLoading: false,
+      oldestMessageId: chatData.oldestMessageId,
+    });
+  }, [chatData, chatId, isNewChat, messagePagination.chatId]);
 
   const { data: settingsData, error: settingsError } = useSWR<Settings>(
     `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/settings`,
@@ -264,28 +293,17 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       api: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/chat`,
       fetch: fetchWithErrorHandlers,
       prepareSendMessagesRequest(request) {
-        const lastMessage = request.messages.at(-1);
-        const isRegenerate = request.trigger === "regenerate-message";
-        const shouldSendMessages =
-          isRegenerate && request.messageId !== undefined;
-        const isToolApprovalContinuation =
-          isOneTimeChat ||
-          lastMessage?.role !== "user" ||
-          request.messages.some((msg) =>
-            msg.parts?.some((part) => {
-              const state = (part as { state?: string }).state;
-              return (
-                state === "approval-responded" || state === "output-denied"
-              );
-            })
-          );
+        const requestMessages = selectChatRequestMessages({
+          isOneTimeChat,
+          messageId: request.messageId,
+          messages: request.messages,
+          trigger: request.trigger,
+        });
 
         return {
           body: {
             id: request.id,
-            ...(isToolApprovalContinuation || shouldSendMessages
-              ? { messages: request.messages }
-              : { message: lastMessage }),
+            ...requestMessages,
             trigger: request.trigger,
             messageId: request.messageId,
             selectedChatModel: currentModelIdRef.current,
@@ -452,6 +470,67 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     }
   }, [chatId, clearGenerationError, isNewChat, setMessages]);
 
+  const loadEarlierMessages = useCallback(async () => {
+    const currentPagination =
+      messagePagination.chatId === chatId
+        ? messagePagination
+        : {
+            chatId,
+            hasMore: chatData?.hasMoreMessages ?? false,
+            isLoading: false,
+            oldestMessageId: chatData?.oldestMessageId ?? null,
+          };
+
+    if (
+      isNewChat ||
+      currentPagination.isLoading ||
+      !currentPagination.hasMore ||
+      !currentPagination.oldestMessageId
+    ) {
+      return false;
+    }
+
+    setMessagePagination({ ...currentPagination, isLoading: true });
+
+    try {
+      const before = encodeURIComponent(currentPagination.oldestMessageId);
+      const page = (await fetcher(
+        `${getChatMessagesKey(chatId)}&before=${before}`
+      )) as ChatData;
+      if (activeChatIdRef.current !== chatId) {
+        return false;
+      }
+      setMessages((currentMessages) => {
+        const currentIds = new Set(
+          currentMessages.map((currentMessage) => currentMessage.id)
+        );
+        return [
+          ...page.messages.filter((message) => !currentIds.has(message.id)),
+          ...currentMessages,
+        ];
+      });
+      setMessagePagination({
+        chatId,
+        hasMore: page.hasMoreMessages,
+        isLoading: false,
+        oldestMessageId: page.oldestMessageId,
+      });
+      return true;
+    } catch (error) {
+      setMessagePagination({ ...currentPagination, isLoading: false });
+      console.error("Failed to load earlier messages:", error);
+      toast.error("Failed to load earlier messages. Please try again.");
+      return false;
+    }
+  }, [
+    chatData?.hasMoreMessages,
+    chatData?.oldestMessageId,
+    chatId,
+    isNewChat,
+    messagePagination,
+    setMessages,
+  ]);
+
   const lastAppliedModelForChatRef = useRef<string | null>(null);
   useEffect(() => {
     if (lastAppliedModelForChatRef.current === chatId) {
@@ -586,6 +665,13 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       settings,
       isOneTimeChat,
       isNewChat,
+      hasMoreMessages:
+        messagePagination.chatId === chatId
+          ? messagePagination.hasMore
+          : (chatData?.hasMoreMessages ?? false),
+      isLoadingEarlierMessages:
+        messagePagination.chatId === chatId && messagePagination.isLoading,
+      loadEarlierMessages,
     }),
     [
       chatId,
@@ -615,6 +701,9 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
       isOneTimeChat,
       setReasoningEffort,
       setCurrentModelId,
+      messagePagination,
+      chatData?.hasMoreMessages,
+      loadEarlierMessages,
     ]
   );
 

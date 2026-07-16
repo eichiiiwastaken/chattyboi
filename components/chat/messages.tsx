@@ -1,6 +1,6 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { ArrowDownIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GenerationError } from "@/hooks/use-active-chat";
 import { useMessages } from "@/hooks/use-messages";
 import type { Vote } from "@/lib/db/schema";
@@ -37,7 +37,13 @@ type MessagesProps = {
   onRetryMessage?: (message: ChatMessage, modelId?: string) => void;
   searchSources?: Array<{ title: string; url: string }> | null;
   statsForNerds?: boolean;
+  hasMoreMessages?: boolean;
+  isLoadingEarlierMessages?: boolean;
+  onLoadEarlierMessages?: () => Promise<boolean>;
 };
+
+const INITIAL_RENDERED_MESSAGES = 100;
+const RENDER_MORE_MESSAGES = 100;
 
 function PureMessages({
   addToolApprovalResponse,
@@ -57,6 +63,9 @@ function PureMessages({
   onRetryMessage,
   searchSources,
   statsForNerds,
+  hasMoreMessages,
+  isLoadingEarlierMessages,
+  onLoadEarlierMessages,
 }: MessagesProps) {
   const {
     containerRef: messagesContainerRef,
@@ -71,6 +80,23 @@ function PureMessages({
 
   useDataStream();
 
+  const [renderWindow, setRenderWindow] = useState({
+    chatId,
+    count: INITIAL_RENDERED_MESSAGES,
+  });
+  const renderedMessageCount =
+    renderWindow.chatId === chatId
+      ? renderWindow.count
+      : INITIAL_RENDERED_MESSAGES;
+  const firstRenderedMessageIndex = Math.max(
+    0,
+    messages.length - renderedMessageCount
+  );
+  const renderedMessages = useMemo(
+    () => messages.slice(firstRenderedMessageIndex),
+    [firstRenderedMessageIndex, messages]
+  );
+
   const retryErrorMessage = generationError ? messages.at(-1) : undefined;
 
   const prevChatIdRef = useRef(chatId);
@@ -78,6 +104,7 @@ function PureMessages({
     if (prevChatIdRef.current !== chatId) {
       prevChatIdRef.current = chatId;
       reset();
+      setRenderWindow({ chatId, count: INITIAL_RENDERED_MESSAGES });
     }
   }, [chatId, reset]);
 
@@ -104,40 +131,72 @@ function PureMessages({
         style={isArtifactVisible ? { scrollbarWidth: "none" } : undefined}
       >
         <div className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col gap-5 px-3 py-5 sm:px-4 md:gap-7 md:py-6">
-          {messages.map((message, index) => (
-            <PreviewMessage
-              addToolApprovalResponse={addToolApprovalResponse}
-              chatId={chatId}
-              generationError={
-                generationError &&
-                index === messages.length - 1 &&
-                message.role === "assistant"
-                  ? generationError
-                  : null
-              }
-              isLoading={
-                status === "streaming" && messages.length - 1 === index
-              }
-              isReadonly={isReadonly}
-              key={message.id}
-              message={message}
-              messageSignature={getMessageRenderSignature(message)}
-              onBranchMessage={onBranchMessage}
-              onEdit={onEditMessage}
-              onQuoteSelection={onQuoteSelection}
-              onRetryMessage={onRetryMessage}
-              regenerate={regenerate}
-              requiresScrollPadding={
-                hasSentMessage && index === messages.length - 1
-              }
-              searchSources={
-                index === messages.length - 1 ? searchSources : null
-              }
-              selectedModelId={selectedModelId}
-              setMessages={setMessages}
-              statsForNerds={statsForNerds}
-            />
-          ))}
+          {(firstRenderedMessageIndex > 0 || hasMoreMessages) && (
+            <button
+              className="mx-auto rounded-full border border-border/50 bg-card/70 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              disabled={isLoadingEarlierMessages}
+              onClick={async () => {
+                if (firstRenderedMessageIndex === 0 && hasMoreMessages) {
+                  const loaded = await onLoadEarlierMessages?.();
+                  if (loaded === false) {
+                    return;
+                  }
+                }
+                setRenderWindow((currentWindow) => ({
+                  chatId,
+                  count:
+                    (currentWindow.chatId === chatId
+                      ? currentWindow.count
+                      : INITIAL_RENDERED_MESSAGES) + RENDER_MORE_MESSAGES,
+                }));
+              }}
+              type="button"
+            >
+              {isLoadingEarlierMessages
+                ? "Loading earlier messages..."
+                : firstRenderedMessageIndex > 0
+                  ? `Show earlier messages (${firstRenderedMessageIndex})`
+                  : "Load earlier messages"}
+            </button>
+          )}
+
+          {renderedMessages.map((message, renderedIndex) => {
+            const index = firstRenderedMessageIndex + renderedIndex;
+            return (
+              <PreviewMessage
+                addToolApprovalResponse={addToolApprovalResponse}
+                chatId={chatId}
+                generationError={
+                  generationError &&
+                  index === messages.length - 1 &&
+                  message.role === "assistant"
+                    ? generationError
+                    : null
+                }
+                isLoading={
+                  status === "streaming" && messages.length - 1 === index
+                }
+                isReadonly={isReadonly}
+                key={message.id}
+                message={message}
+                messageSignature={getMessageRenderSignature(message)}
+                onBranchMessage={onBranchMessage}
+                onEdit={onEditMessage}
+                onQuoteSelection={onQuoteSelection}
+                onRetryMessage={onRetryMessage}
+                regenerate={regenerate}
+                requiresScrollPadding={
+                  hasSentMessage && index === messages.length - 1
+                }
+                searchSources={
+                  index === messages.length - 1 ? searchSources : null
+                }
+                selectedModelId={selectedModelId}
+                setMessages={setMessages}
+                statsForNerds={statsForNerds}
+              />
+            );
+          })}
 
           {shouldShowThinkingMessage && <ThinkingMessage />}
 

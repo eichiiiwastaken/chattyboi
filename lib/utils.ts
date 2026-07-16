@@ -31,8 +31,19 @@ export async function fetchWithErrorHandlers(
   input: RequestInfo | URL,
   init?: RequestInit,
 ) {
+  const responseTimeoutController = new AbortController();
+  let responseTimedOut = false;
+  const responseTimeout = globalThis.setTimeout(() => {
+    responseTimedOut = true;
+    responseTimeoutController.abort();
+  }, 60_000);
+
   try {
-    const response = await fetch(input, init);
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, responseTimeoutController.signal])
+      : responseTimeoutController.signal;
+    const response = await fetch(input, { ...init, signal });
+    globalThis.clearTimeout(responseTimeout);
 
     if (!response.ok) {
       throw await createErrorFromResponse(response);
@@ -40,8 +51,17 @@ export async function fetchWithErrorHandlers(
 
     return response;
   } catch (error: unknown) {
+    globalThis.clearTimeout(responseTimeout);
+
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       throw new ChatbotError('offline:chat');
+    }
+
+    if (responseTimedOut) {
+      throw new ChatbotError(
+        'offline:chat',
+        'The server did not start the response within 60 seconds. Your message was kept; please retry.'
+      );
     }
 
     throw error;

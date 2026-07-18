@@ -7,6 +7,7 @@ import {
   MessageSquareIcon,
   SparklesIcon,
 } from "lucide-react";
+import { useState } from "react";
 import useSWR from "swr";
 import {
   Area,
@@ -27,6 +28,7 @@ import type { DitherColor } from "@/components/dither-kit/palette";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type UsageData = {
+  period: UsagePeriod;
   totals: {
     requests: number;
     inputTokens: number;
@@ -61,6 +63,14 @@ type UsageData = {
   latencyBuckets: Array<{ bucket: string; requests: number }>;
   generatedAt: string;
 };
+
+type UsagePeriod = "7d" | "30d" | "all";
+
+const periodOptions: Array<{ value: UsagePeriod; label: string }> = [
+  { value: "30d", label: "30d" },
+  { value: "7d", label: "7d" },
+  { value: "all", label: "All time" },
+];
 
 const tokenConfig: ChartConfig = {
   input: { label: "Input", color: "blue" },
@@ -165,8 +175,9 @@ function ChartCard({
 }
 
 export function UsageDashboard() {
+  const [period, setPeriod] = useState<UsagePeriod>("30d");
   const { data, error, isLoading } = useSWR<UsageData>(
-    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/usage`,
+    `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/usage?period=${period}`,
     (url: string) =>
       fetch(url).then((response) => {
         if (!response.ok) {
@@ -203,7 +214,9 @@ export function UsageDashboard() {
     );
   }
 
-  const recent = data.daily.slice(-14);
+  const recent = data.daily.slice(-Math.min(data.daily.length, 14));
+  const periodLabel =
+    data.period === "all" ? "all time" : `the last ${data.period}`;
   const modelData = data.models.slice(0, 6).map((model, index) => ({
     name: `model-${index}`,
     label: model.model,
@@ -219,6 +232,32 @@ export function UsageDashboard() {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <fieldset
+          aria-label="Usage period"
+          className="inline-flex rounded-lg border border-border/50 bg-muted/40 p-0.5"
+        >
+          {periodOptions.map((option) => {
+            const isActive = option.value === period;
+
+            return (
+              <button
+                aria-pressed={isActive}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  isActive
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                key={option.value}
+                onClick={() => setPeriod(option.value)}
+                type="button"
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </fieldset>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <UsageCard
           color="blue"
@@ -232,7 +271,7 @@ export function UsageDashboard() {
           color="green"
           icon={MessageSquareIcon}
           label="Responses"
-          note={`${data.totals.activeDays} active days this month`}
+          note={`${data.totals.activeDays} active days in ${periodLabel}`}
           series={recent.map((d) => d.requests)}
           value={data.totals.requests.toLocaleString()}
         />
@@ -278,7 +317,7 @@ export function UsageDashboard() {
         <>
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard
-              description="Input and output tokens over the last 30 days"
+              description={`Input and output tokens over ${periodLabel}`}
               title="Token volume"
             >
               <AreaChart
@@ -301,7 +340,7 @@ export function UsageDashboard() {
             </ChartCard>
 
             <ChartCard
-              description="Response count by UTC hour across all history"
+              description={`Response count by UTC hour over ${periodLabel}`}
               title="When you chat"
             >
               <BarChart bloom="low" config={requestConfig} data={data.hours}>
@@ -323,7 +362,7 @@ export function UsageDashboard() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <ChartCard
-              description="Share of measured tokens across your most-used models"
+              description={`Share of measured tokens across your most-used models over ${periodLabel}`}
               title="Model mix"
             >
               {modelData.length ? (

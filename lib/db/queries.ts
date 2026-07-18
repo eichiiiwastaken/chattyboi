@@ -426,7 +426,13 @@ export async function getMessagePageByChatId({
   }
 }
 
-export async function getUsageMessagesByUserId({ userId }: { userId: string }) {
+export async function getUsageMessagesByUserId({
+  userId,
+  startDate,
+}: {
+  userId: string;
+  startDate?: Date;
+}) {
   try {
     return await db
       .select({
@@ -435,7 +441,13 @@ export async function getUsageMessagesByUserId({ userId }: { userId: string }) {
       })
       .from(message)
       .innerJoin(chat, eq(message.chatId, chat.id))
-      .where(and(eq(chat.userId, userId), eq(message.role, "assistant")))
+      .where(
+        and(
+          eq(chat.userId, userId),
+          eq(message.role, "assistant"),
+          ...(startDate ? [gte(message.createdAt, startDate)] : [])
+        )
+      )
       .orderBy(asc(message.createdAt));
   } catch (_error) {
     throw new ChatbotError(

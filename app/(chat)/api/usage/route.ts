@@ -6,25 +6,53 @@ import { messageMetadataSchema } from "@/lib/types";
 
 const DAY_MS = 86_400_000;
 const MODEL_COLORS = ["blue", "purple", "green", "orange", "pink", "red"];
+const PERIOD_DAYS = {
+  "7d": 7,
+  "30d": 30,
+} as const;
+
+type UsagePeriod = keyof typeof PERIOD_DAYS | "all";
 
 function dayKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user) {
     return new ChatbotError("unauthorized:settings").toResponse();
   }
 
   try {
-    const rows = await getUsageMessagesByUserId({ userId: session.user.id });
+    const periodParam = new URL(request.url).searchParams.get("period");
+    const period: UsagePeriod =
+      periodParam === "7d" || periodParam === "all" ? periodParam : "30d";
     const now = new Date();
     const today = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
     );
-    const daily = Array.from({ length: 30 }, (_, index) => {
-      const date = new Date(today.getTime() - (29 - index) * DAY_MS);
+    const startDate =
+      period === "all"
+        ? undefined
+        : new Date(today.getTime() - (PERIOD_DAYS[period] - 1) * DAY_MS);
+    const rows = await getUsageMessagesByUserId({
+      userId: session.user.id,
+      startDate,
+    });
+    const firstDate =
+      period === "all" && rows[0]
+        ? new Date(
+            Date.UTC(
+              rows[0].createdAt.getUTCFullYear(),
+              rows[0].createdAt.getUTCMonth(),
+              rows[0].createdAt.getUTCDate()
+            )
+          )
+        : (startDate ?? today);
+    const days =
+      Math.floor((today.getTime() - firstDate.getTime()) / DAY_MS) + 1;
+    const daily = Array.from({ length: days }, (_, index) => {
+      const date = new Date(firstDate.getTime() + index * DAY_MS);
       return {
         date: dayKey(date),
         label: date.toLocaleDateString("en", {
@@ -168,6 +196,7 @@ export async function GET() {
       });
 
     return Response.json({
+      period,
       totals: {
         requests: measuredRequests,
         inputTokens: totalInput,

@@ -1,6 +1,7 @@
 import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { customProvider } from "ai";
 import { isTestEnvironment } from "../constants";
 import { GATEWAY_FALLBACK_CHAT_MODEL, titleModel } from "./models";
@@ -18,9 +19,12 @@ const opencodego = createOpenAICompatible({
   name: "opencodego",
 });
 
-const openrouter = createOpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
+// Use OpenRouter's provider instead of the generic OpenAI-compatible adapter.
+// In particular, it exposes OpenRouter's in-stream error payloads rather than
+// treating them as an empty completion with an unknown finish reason.
+const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
+  compatibility: "strict",
 });
 
 const openai = createOpenAI();

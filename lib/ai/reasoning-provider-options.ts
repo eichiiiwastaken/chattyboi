@@ -44,9 +44,16 @@ export function getReasoningProviderOptions({
   }
 
   if (provider === "openrouter") {
-    return Object.keys(explicitReasoningEffort).length > 0
-      ? { openai: explicitReasoningEffort }
-      : {};
+    return {
+      openrouter: {
+        reasoning: {
+          effort:
+            effort && effort !== "auto"
+              ? effort
+              : getAutomaticOpenAIEffort(chatModel),
+        },
+      },
+    };
   }
 
   return {};

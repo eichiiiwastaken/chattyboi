@@ -30,6 +30,7 @@ export function withSearchAnswerFallback(
   let searchAnswerLength = 0;
   let answerWasTruncated = false;
   let sawFinish = false;
+  let sawError = false;
 
   return stream.pipeThrough(
     new TransformStream<InferUIMessageChunk<ChatMessage>>({
@@ -43,6 +44,10 @@ export function withSearchAnswerFallback(
 
         if (chunk.type === "text-delta" && chunk.delta.trim().length > 0) {
           sawText = true;
+        }
+
+        if (chunk.type === "error") {
+          sawError = true;
         }
 
         if (sawSearchOutput && chunk.type === "text-delta") {
@@ -65,13 +70,19 @@ export function withSearchAnswerFallback(
         if (chunk.type === "finish") {
           sawFinish = true;
 
+          // The UI renders stream error chunks in the standard generation-error
+          // card. Do not add a second, plain-text fallback below it.
+          if (sawError) {
+            controller.enqueue(chunk);
+            return;
+          }
+
           if (sawSearchOutput && !sawTextAfterSearch) {
             console.error("Search turn finished without answer text", context);
-            enqueueNotice(
+            enqueueError(
               controller,
               "I found search results, but the model finished without producing a visible answer. Please retry the message; the search results above did come back successfully."
             );
-            sawText = true;
           } else if (
             sawSearchOutput &&
             (answerWasTruncated || chunk.finishReason === "length")
@@ -90,11 +101,10 @@ export function withSearchAnswerFallback(
               ...context,
               finishReason: chunk.finishReason,
             });
-            enqueueNotice(
+            enqueueError(
               controller,
               getEmptyResponseNotice(chunk.finishReason)
             );
-            sawText = true;
           }
         }
 
@@ -105,11 +115,15 @@ export function withSearchAnswerFallback(
           return;
         }
 
+        if (sawError) {
+          return;
+        }
+
         console.error("Assistant stream ended without a finish event", context);
-        enqueueNotice(
+        enqueueError(
           controller,
           sawText
-            ? "\n\n_The response ended unexpectedly and may be incomplete. Please retry if anything is missing._"
+            ? "The response ended unexpectedly and may be incomplete. Please retry if anything is missing."
             : "The response ended unexpectedly before the model produced an answer. Your message was kept; please retry."
         );
       },
@@ -139,4 +153,13 @@ function enqueueNotice(
   controller.enqueue({ type: "text-start", id });
   controller.enqueue({ type: "text-delta", id, delta: text });
   controller.enqueue({ type: "text-end", id });
+}
+
+function enqueueError(
+  controller: TransformStreamDefaultController<
+    InferUIMessageChunk<ChatMessage>
+  >,
+  errorText: string
+) {
+  controller.enqueue({ type: "error", errorText });
 }

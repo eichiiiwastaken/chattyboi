@@ -26,14 +26,14 @@ describe("reasoning provider options", () => {
     });
   });
 
-  it("does not request summaries from Chat Completions-compatible providers", () => {
+  it("uses OpenRouter's reasoning option for OpenRouter models", () => {
     expect(
       getReasoningProviderOptions({
         chatModel: "openrouter/openai/gpt-5.6-terra",
         effort: "medium",
         isReasoningModel: true,
       })
-    ).toEqual({ openai: { reasoningEffort: "medium" } });
+    ).toEqual({ openrouter: { reasoning: { effort: "medium" } } });
   });
 
   it("uses high effort automatically for pro models", () => {

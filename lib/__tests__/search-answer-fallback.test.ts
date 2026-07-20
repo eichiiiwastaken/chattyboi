@@ -60,7 +60,7 @@ describe("search answer fallback", () => {
     expect(text.at(-1)).toContain("may be incomplete");
   });
 
-  it("adds a retry message when search produced results but no answer", async () => {
+  it("adds an error part when search produced results but no answer", async () => {
     const output = await collect([
       {
         type: "tool-output-available",
@@ -73,32 +73,41 @@ describe("search answer fallback", () => {
     expect(
       output.some(
         (chunk) =>
-          chunk.type === "text-delta" && chunk.delta.includes("Please retry")
+          chunk.type === "error" && chunk.errorText.includes("Please retry")
       )
     ).toBe(true);
   });
 
-  it("adds a visible explanation when a normal turn finishes empty", async () => {
+  it("adds an error part when a normal turn finishes empty", async () => {
     const output = await collect([{ type: "finish", finishReason: "length" }]);
 
     expect(
       output.some(
         (chunk) =>
-          chunk.type === "text-delta" &&
-          chunk.delta.includes("context or output limit")
+          chunk.type === "error" &&
+          chunk.errorText.includes("context or output limit")
       )
     ).toBe(true);
   });
 
-  it("adds a retry message when a stream closes without a finish event", async () => {
+  it("adds an error part when a stream closes without a finish event", async () => {
     const output = await collect([]);
 
     expect(
       output.some(
         (chunk) =>
-          chunk.type === "text-delta" &&
-          chunk.delta.includes("ended unexpectedly")
+          chunk.type === "error" &&
+          chunk.errorText.includes("ended unexpectedly")
       )
     ).toBe(true);
+  });
+
+  it("does not add a second error card when the provider reported an error", async () => {
+    const output = await collect([
+      { type: "error", errorText: "Rate limit exceeded" },
+      { type: "finish", finishReason: "error" },
+    ]);
+
+    expect(output.filter((chunk) => chunk.type === "error")).toHaveLength(1);
   });
 });

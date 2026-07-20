@@ -145,6 +145,7 @@ function PureMultimodalInput({
   const { webSearchEnabled, setWebSearchEnabled, setSearchSources } =
     useActiveChat();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previousChatIdRef = useRef(chatId);
   const { width } = useWindowSize();
   const hasAutoFocused = useRef(false);
   useEffect(() => {
@@ -158,6 +159,19 @@ function PureMultimodalInput({
       return () => clearTimeout(timer);
     }
   }, [width]);
+
+  useEffect(() => {
+    if (previousChatIdRef.current === chatId) {
+      return;
+    }
+
+    previousChatIdRef.current = chatId;
+    const frame = window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [chatId]);
 
   const [localStorageInput, setLocalStorageInput] = useLocalStorage(
     "input",

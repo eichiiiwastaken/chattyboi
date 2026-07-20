@@ -52,6 +52,10 @@ type ChatData = {
 };
 
 const STOPPED_STREAM_RESUME_SUPPRESSION_MS = 10_000;
+// Rendering every streamed token can overwhelm React's external-store
+// subscription path, particularly while a reasoning model emits a burst of
+// small deltas. Keep the UI responsive while coalescing those updates.
+const STREAM_RENDER_THROTTLE_MS = 50;
 
 type ActiveChatContextValue = {
   chatId: string;
@@ -269,6 +273,7 @@ export function ActiveChatProvider({ children }: { children: ReactNode }) {
     error: chatError,
     clearError: clearChatError,
   } = useChat<ChatMessage>({
+    experimental_throttle: STREAM_RENDER_THROTTLE_MS,
     id: chatId,
     messages: initialMessages,
     generateId: generateUUID,

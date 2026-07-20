@@ -202,14 +202,10 @@ export function ChatShell() {
         setCookie("chat-model", branchModelId);
         await mutate(unstable_serialize(getChatHistoryPaginationKey));
 
-        const params = new URLSearchParams({
-          branch: branch.messageId,
-          model: branch.modelId,
-        });
         router.push(
-          `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${branch.chatId}?${params.toString()}`
+          `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/chat/${branch.chatId}`
         );
-        toast.success("Branched into a new chat", { id: toastId });
+        toast.success("Copied into a new chat", { id: toastId });
       } catch (error) {
         console.error("[branch] Failed to branch chat:", error);
         toast.error("Failed to branch chat", { id: toastId });

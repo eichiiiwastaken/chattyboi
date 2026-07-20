@@ -32,9 +32,9 @@ function PureChatHeader({
   }
 
   return (
-    <header className="sticky top-0 flex min-h-14 items-center gap-2 bg-sidebar px-3 pt-[env(safe-area-inset-top)]">
+    <header className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-20 flex h-10 w-fit items-center gap-1 rounded-full border border-border/50 bg-background/90 p-1 shadow-sm backdrop-blur-md">
       <Button
-        className="md:hidden"
+        className="rounded-full md:hidden"
         onClick={toggleSidebar}
         size="icon-sm"
         variant="ghost"
@@ -43,7 +43,7 @@ function PureChatHeader({
       </Button>
 
       {showOneTimeOption ? (
-        <div className="flex h-8 items-center gap-2 rounded-lg border border-border/50 bg-background/40 px-2.5 text-muted-foreground text-xs transition-colors hover:text-foreground">
+        <div className="flex h-8 items-center gap-2 rounded-full px-2.5 text-muted-foreground text-xs transition-colors hover:text-foreground">
           <ClockIcon className="size-3.5" />
           <span>One-time chat</span>
           <Switch
@@ -60,7 +60,7 @@ function PureChatHeader({
           />
         </div>
       ) : isOneTimeChat ? (
-        <div className="flex h-8 items-center gap-2 rounded-lg border border-border/50 bg-background/40 px-2.5 text-muted-foreground text-xs">
+        <div className="flex h-8 items-center gap-2 rounded-full px-2.5 text-muted-foreground text-xs">
           <ClockIcon className="size-3.5" />
           One-time chat
         </div>
@@ -68,6 +68,7 @@ function PureChatHeader({
         !isReadonly && (
           <VisibilitySelector
             chatId={chatId}
+            className="rounded-full border-transparent bg-transparent hover:bg-muted/70"
             selectedVisibilityType={selectedVisibilityType}
           />
         )

@@ -30,7 +30,7 @@ const PureChatItem = ({
     >
       <SidebarMenuButton
         asChild
-        className="h-8 rounded-lg pr-24 text-[13px] text-sidebar-foreground/55 transition-colors duration-150 hover:bg-transparent hover:text-sidebar-foreground data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground"
+        className="h-8 min-w-0 rounded-lg !pr-[4.5rem] text-[13px] text-sidebar-foreground/55 transition-colors duration-150 hover:bg-transparent hover:text-sidebar-foreground data-[active=true]:bg-transparent data-[active=true]:font-medium data-[active=true]:text-sidebar-foreground"
         isActive={isActive}
       >
         <Link href={`/chat/${chat.id}`} onClick={() => setOpenMobile(false)}>
@@ -40,7 +40,7 @@ const PureChatItem = ({
               className="size-3 shrink-0 text-sidebar-foreground/40"
             />
           )}
-          <span className="min-w-0 flex-1 truncate">
+          <span className="min-w-0 max-w-full flex-1 truncate">
             {chat.title?.trim() || "Untitled chat"}
           </span>
         </Link>

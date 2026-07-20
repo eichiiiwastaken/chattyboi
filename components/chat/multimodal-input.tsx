@@ -173,6 +173,18 @@ function PureMultimodalInput({
     return () => window.cancelAnimationFrame(frame);
   }, [chatId]);
 
+  useEffect(() => {
+    if (!editingMessage) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingMessage]);
+
   const [localStorageInput, setLocalStorageInput] = useLocalStorage(
     "input",
     ""
